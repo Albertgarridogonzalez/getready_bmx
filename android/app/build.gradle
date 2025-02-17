@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace "com.example.getready_bmx"
+    namespace = "com.example.getready_bmx"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
