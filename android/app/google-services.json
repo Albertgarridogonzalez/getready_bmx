@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "474572921472",
+    "project_id": "getready-bmx",
+    "storage_bucket": "getready-bmx.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:474572921472:android:0e57865d97b5040fafa465",
+        "android_client_info": {
+          "package_name": "com.example.getready_bmx"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBsSE0oHqOdM2Zu21vBmtmS5FC_89u-BDo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
