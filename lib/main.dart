@@ -10,10 +10,15 @@ import 'package:getready_bmx/screens/settings_screen.dart';
 import 'package:getready_bmx/screens/records_screen.dart';
 import 'package:getready_bmx/widgets/bottom_nav.dart';
 import 'package:getready_bmx/providers/theme_provider.dart'; // Importa el ThemeProvider
+import 'firebase_options.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+  //options: DefaultFirebaseOptions.currentPlatform,
+  options: DefaultFirebaseOptions.currentPlatform,
+);
 
   runApp(MyApp());
 }

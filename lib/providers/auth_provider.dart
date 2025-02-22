@@ -1,4 +1,4 @@
-// providers/auth_provider.dart
+// auth_provider.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:getready_bmx/services/auth_service.dart';
@@ -17,12 +17,19 @@ class AuthProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> signInWithEmail(BuildContext context, String email, String password) async {
-    await _authService.signInWithEmail(context, email, password);
+  Future<bool> signInWithEmail(BuildContext context, String email, String password) async {
+    bool ok = await _authService.signInWithEmail(context, email, password);
+    return ok;
   }
 
-  Future<void> registerWithEmail(BuildContext context, String email, String password, String pilotName) async {
-    await _authService.registerWithEmail(context, email, password, pilotName);
+  Future<bool> registerWithEmail(
+    BuildContext context,
+    String email,
+    String password,
+    String pilotName,
+  ) async {
+    bool ok = await _authService.registerWithEmail(context, email, password, pilotName);
+    return ok;
   }
 
   Future<void> signOut() async {

@@ -9,27 +9,38 @@ class AuthService {
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  Future<void> signInWithEmail(BuildContext context, String email, String password) async {
+  Future<bool> signInWithEmail(BuildContext context, String email, String password) async {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
+      return true; // Éxito
     } on FirebaseAuthException catch (e) {
       _showErrorSnackbar(context, _getErrorMessage(e.code));
+      return false; // Error
     }
   }
 
-  Future<void> registerWithEmail(BuildContext context, String email, String password, String pilotName) async {
+
+   Future<bool> registerWithEmail(
+    BuildContext context,
+    String email,
+    String password,
+    String pilotName,
+  ) async {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+      // Se guarda el usuario en Firestore
       await _db.collection('users').doc(result.user!.uid).set({
         'email': email,
         'pilotName': pilotName,
         'role': 'user',
       });
+      return true;
     } on FirebaseAuthException catch (e) {
       _showErrorSnackbar(context, _getErrorMessage(e.code));
+      return false;
     }
   }
 

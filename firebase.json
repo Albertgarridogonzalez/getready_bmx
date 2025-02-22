@@ -1,0 +1,43 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "getready-bmx",
+          "appId": "1:474572921472:android:0e57865d97b5040fafa465",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "getready-bmx",
+          "configurations": {
+            "android": "1:474572921472:android:0e57865d97b5040fafa465",
+            "ios": "1:474572921472:ios:00ab1e89c891736dafa465",
+            "macos": "1:474572921472:ios:00ab1e89c891736dafa465",
+            "web": "1:474572921472:web:9dc3f185577315f0afa465",
+            "windows": "1:474572921472:web:2144c301891e6b86afa465"
+          }
+        }
+      }
+    }
+  }
+}

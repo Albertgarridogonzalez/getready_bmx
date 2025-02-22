@@ -12,7 +12,12 @@
           "package_name": "com.example.getready_bmx"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "474572921472-cesbf5kcfmqn4ullgm65ldeh3kar4vr2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBsSE0oHqOdM2Zu21vBmtmS5FC_89u-BDo"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "474572921472-cesbf5kcfmqn4ullgm65ldeh3kar4vr2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "474572921472-e1mg2qfuklts57hljfqrrj1g0ejud1pq.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.getreadyBmx"
+              }
+            }
+          ]
         }
       }
     }

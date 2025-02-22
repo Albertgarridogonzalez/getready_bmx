@@ -1,4 +1,3 @@
-// screens/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:getready_bmx/providers/auth_provider.dart';
@@ -19,56 +18,125 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text(isRegistering ? 'Registro' : 'Login')),
-      body: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: emailController,
-              decoration: InputDecoration(labelText: 'Email'),
-            ),
-            TextField(
-              controller: passwordController,
-              decoration: InputDecoration(labelText: 'Contraseña'),
-              obscureText: true,
-            ),
-            if (isRegistering)
-              TextField(
-                controller: pilotController,
-                decoration: InputDecoration(labelText: 'Nombre del piloto'),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: Container(
+              width: double.infinity,
+              height: constraints.maxHeight,
+              child: Column(
+                children: [
+                  // Encabezado con imagen (puedes ajustar altura, opacidad, etc.)
+                  Container(
+                    width: double.infinity,
+                    height: constraints.maxHeight * 0.45,
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      image: DecorationImage(
+                        image: AssetImage('assets/imagenes/mi_imagen.png'),
+                        fit: BoxFit.cover,
+                        opacity: 0.8,
+                      ),
+                    ),
+                  ),
+
+                  // Formulario de Login / Registro
+                  Expanded(
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(height: 16),
+                          Text(
+                            isRegistering ? 'Registro' : 'Login',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 20),
+                          TextField(
+                            controller: emailController,
+                            decoration: InputDecoration(
+                              labelText: 'Email',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          SizedBox(height: 12),
+                          TextField(
+                            controller: passwordController,
+                            decoration: InputDecoration(
+                              labelText: 'Contraseña',
+                              border: OutlineInputBorder(),
+                            ),
+                            obscureText: true,
+                          ),
+                          SizedBox(height: 12),
+                          if (isRegistering)
+                            TextField(
+                              controller: pilotController,
+                              decoration: InputDecoration(
+                                labelText: 'Nombre del piloto',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          SizedBox(height: 20),
+                          ElevatedButton(
+                            onPressed: () async {
+                              bool result;
+                              if (isRegistering) {
+                                // Intenta registrar
+                                result = await authProvider.registerWithEmail(
+                                  context,
+                                  emailController.text.trim(),
+                                  passwordController.text.trim(),
+                                  pilotController.text.trim(),
+                                );
+                              } else {
+                                // Intenta iniciar sesión
+                                result = await authProvider.signInWithEmail(
+                                  context,
+                                  emailController.text.trim(),
+                                  passwordController.text.trim(),
+                                );
+                              }
+                              
+                              // Navega solo si result == true (éxito)
+                              if (result == true) {
+                                Navigator.of(context)
+                                    .pushReplacementNamed('/home');
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: Size(double.infinity, 48),
+                            ),
+                            child: Text(
+                              isRegistering ? 'Registrar' : 'Iniciar sesión',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                isRegistering = !isRegistering;
+                              });
+                            },
+                            child: Text(
+                              isRegistering
+                                  ? '¿Ya tienes cuenta? Iniciar sesión'
+                                  : 'Crear una cuenta',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () async {
-                if (isRegistering) {
-                  await authProvider.registerWithEmail(
-                    context,
-                    emailController.text,
-                    passwordController.text,
-                    pilotController.text,
-                  );
-                } else {
-                  await authProvider.signInWithEmail(
-                    context,
-                    emailController.text,
-                    passwordController.text,
-                  );
-                }
-                Navigator.of(context).pushReplacementNamed('/home');
-              },
-              child: Text(isRegistering ? 'Registrar' : 'Iniciar sesión'),
             ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  isRegistering = !isRegistering;
-                });
-              },
-              child: Text(isRegistering ? '¿Ya tienes cuenta? Iniciar sesión' : 'Crear una cuenta'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
