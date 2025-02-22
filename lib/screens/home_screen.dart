@@ -20,7 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
     'Ajustes'
   ];
   final List<Widget> _pages = [
-    //Center(child: Text('Pantalla de Inicio')), // Puedes reemplazar esto con la pantalla principal
+    Center(child: Text('Pantalla de Inicio')), // Página de inicio
     LiveScreen(),
     RecordsScreen(),
     LeaderboardScreen(),
