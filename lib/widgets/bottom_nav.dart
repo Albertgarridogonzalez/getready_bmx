@@ -1,5 +1,6 @@
-// widgets/bottom_nav.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:getready_bmx/providers/theme_provider.dart';
 
 class BottomNav extends StatelessWidget {
   final int currentIndex;
@@ -9,28 +10,69 @@ class BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final iconColor = themeProvider.isDarkMode ? Colors.white : Colors.black;
     return BottomAppBar(
       shape: CircularNotchedRectangle(),
       notchMargin: 8.0,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          IconButton(
-            icon: Icon(Icons.live_tv, color: Colors.black),
-            onPressed: () => onTap(1),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10.0),
+                onTap: () => onTap(1),
+                child: Container(
+                  height: 56.0,
+                  alignment: Alignment.center,
+                  child: Icon(Icons.live_tv, color: iconColor),
+                ),
+              ),
+            ),
           ),
-          IconButton(
-            icon: Icon(Icons.history, color: Colors.black),
-            onPressed: () => onTap(2),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10.0),
+                onTap: () => onTap(2),
+                child: Container(
+                  height: 56.0,
+                  alignment: Alignment.center,
+                  child: Icon(Icons.history, color: iconColor),
+                ),
+              ),
+            ),
           ),
           SizedBox(width: 40), // Espacio para centrar el botón de Home
-          IconButton(
-            icon: Icon(Icons.leaderboard, color: Colors.black),
-            onPressed: () => onTap(3),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10.0),
+                onTap: () => onTap(3),
+                child: Container(
+                  height: 56.0,
+                  alignment: Alignment.center,
+                  child: Icon(Icons.leaderboard, color: iconColor),
+                ),
+              ),
+            ),
           ),
-          IconButton(
-            icon: Icon(Icons.settings, color: Colors.black),
-            onPressed: () => onTap(4),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10.0),
+                onTap: () => onTap(4),
+                child: Container(
+                  height: 56.0,
+                  alignment: Alignment.center,
+                  child: Icon(Icons.settings, color: iconColor),
+                ),
+              ),
+            ),
           ),
         ],
       ),

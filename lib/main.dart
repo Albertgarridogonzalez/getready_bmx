@@ -1,4 +1,3 @@
-// main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +9,7 @@ import 'package:getready_bmx/screens/leaderboard_screen.dart';
 import 'package:getready_bmx/screens/settings_screen.dart';
 import 'package:getready_bmx/screens/records_screen.dart';
 import 'package:getready_bmx/widgets/bottom_nav.dart';
+import 'package:getready_bmx/providers/theme_provider.dart'; // Importa el ThemeProvider
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,22 +24,28 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        initialRoute: '/',
-        routes: {
-          '/': (context) => Consumer<AuthProvider>(
-                builder: (context, auth, _) {
-                  return auth.isAuthenticated ? HomeScreen() : LoginScreen();
-                },
-              ),
-          '/home': (context) => HomeScreen(),
-          '/live': (context) => LiveScreen(),
-          '/leaderboard': (context) => LeaderboardScreen(),
-          '/settings': (context) => SettingsScreen(),
-          '/records': (context) => RecordsScreen(),
-          '/login': (context) => LoginScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            initialRoute: '/',
+            theme: themeProvider.themeData, // Usa el ThemeData dinámico
+            routes: {
+              '/': (context) => Consumer<AuthProvider>(
+                    builder: (context, auth, _) {
+                      return auth.isAuthenticated ? HomeScreen() : LoginScreen();
+                    },
+                  ),
+              '/home': (context) => HomeScreen(),
+              '/live': (context) => LiveScreen(),
+              '/leaderboard': (context) => LeaderboardScreen(),
+              '/settings': (context) => SettingsScreen(),
+              '/records': (context) => RecordsScreen(),
+              '/login': (context) => LoginScreen(),
+            },
+          );
         },
       ),
     );

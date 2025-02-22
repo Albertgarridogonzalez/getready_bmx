@@ -1,4 +1,3 @@
-// screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:getready_bmx/widgets/bottom_nav.dart';
 import 'package:getready_bmx/screens/live_screen.dart';
@@ -13,8 +12,15 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  final List<String> _pageTitles = [
+    'Inicio',
+    'Live',
+    'Historial',
+    'Leaderboard',
+    'Ajustes'
+  ];
   final List<Widget> _pages = [
-    Center(child: Text('Pantalla de Inicio')), // Puedes reemplazar esto con la pantalla principal
+    //Center(child: Text('Pantalla de Inicio')), // Puedes reemplazar esto con la pantalla principal
     LiveScreen(),
     RecordsScreen(),
     LeaderboardScreen(),
@@ -31,6 +37,15 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('GetReady BMX'),
+            Text(_pageTitles[_selectedIndex]),
+          ],
+        ),
+      ),
       body: IndexedStack(
         index: _selectedIndex,
         children: _pages,

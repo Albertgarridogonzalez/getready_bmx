@@ -11,10 +11,14 @@ class LiveScreen extends StatefulWidget {
 class _LiveScreenState extends State<LiveScreen> {
   final TextEditingController locationController = TextEditingController();
   final TextEditingController distanceController = TextEditingController();
+
+  // Variables para la sesión (para crear sesión)
   DateTime selectedDate = DateTime.now();
   String? selectedLocation;
   List<String> locations = [];
+  // Lista de pilotos de la sesión (cada uno tendrá: id, name, times, active)
   List<Map<String, dynamic>> selectedPilots = [];
+  // Guarda el ID de la sesión en live (seleccionada por el admin)
   String? currentSessionId;
 
   @override
@@ -23,6 +27,7 @@ class _LiveScreenState extends State<LiveScreen> {
     fetchLocations();
   }
 
+  // Obtiene las ubicaciones creadas en la base de datos.
   void fetchLocations() async {
     var snapshot =
         await FirebaseFirestore.instance.collection('locations').get();
@@ -31,10 +36,10 @@ class _LiveScreenState extends State<LiveScreen> {
     });
   }
 
+  // Popup para crear una nueva ubicación.
   void createLocation() async {
     String location = locationController.text.trim();
     String distance = distanceController.text.trim();
-    
     if (location.isNotEmpty && distance.isNotEmpty) {
       await FirebaseFirestore.instance.collection('locations').doc(location).set({
         'distance': int.parse(distance),
@@ -44,33 +49,110 @@ class _LiveScreenState extends State<LiveScreen> {
     }
   }
 
-  void startLiveSession() async {
-    if (selectedLocation == null) return;
+  // Popup para crear una sesión.
+  // Se selecciona la fecha y la ubicación de la sesión.
+  void showCreateSessionPopup() {
+    DateTime sessionDate = selectedDate;
+    String? sessionLocation = selectedLocation;
 
-    DocumentReference sessionRef =
-        await FirebaseFirestore.instance.collection('sessions').add({
-      'location': selectedLocation,
-      'distance': locations.contains(selectedLocation)
-          ? await FirebaseFirestore.instance
-              .collection('locations')
-              .doc(selectedLocation)
-              .get()
-              .then((doc) => doc['distance'])
-          : 0,
-      'date': selectedDate,
-      'pilots': [],
-    });
-
-    setState(() {
-      currentSessionId = sessionRef.id;
-    });
-
-    showPilotSelectionPopup();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Crear Sesión"),
+          content: StatefulBuilder(
+            builder: (context, setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Selector de fecha (solo se muestra la fecha)
+                  ListTile(
+                    title: Text('Fecha: ${sessionDate.toString().split(' ')[0]}'),
+                    trailing: Icon(Icons.calendar_today),
+                    onTap: () async {
+                      DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: sessionDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          sessionDate = picked;
+                        });
+                      }
+                    },
+                  ),
+                  // Dropdown de ubicaciones (ya creadas)
+                  DropdownButton<String>(
+                    value: sessionLocation,
+                    hint: Text("Seleccionar Ubicación"),
+                    items: locations.map((String loc) {
+                      return DropdownMenuItem<String>(
+                        value: loc,
+                        child: Text(loc),
+                      );
+                    }).toList(),
+                    onChanged: (String? newValue) {
+                      setState(() {
+                        sessionLocation = newValue;
+                      });
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                if (sessionLocation == null) return;
+                DocumentReference sessionRef =
+                    await FirebaseFirestore.instance.collection('sessions').add({
+                  'location': sessionLocation,
+                  'distance': locations.contains(sessionLocation)
+                      ? await FirebaseFirestore.instance
+                          .collection('locations')
+                          .doc(sessionLocation)
+                          .get()
+                          .then((doc) =>
+                              (doc.data()! as Map<String, dynamic>)['distance'])
+                      : 0,
+                  'date': sessionDate,
+                  'pilots': selectedPilots,
+                });
+                setState(() {
+                  currentSessionId = sessionRef.id;
+                  selectedDate = sessionDate;
+                  selectedLocation = sessionLocation;
+                });
+                Navigator.pop(context);
+              },
+              child: Text("Crear Sesión"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
+  // Popup para seleccionar/deseleccionar pilotos (riders).
   void showPilotSelectionPopup() async {
-    List<Map<String, dynamic>> pilots = [];
-    var snapshot = await FirebaseFirestore.instance.collection('pilots').get();
+    if (currentSessionId != null) {
+      DocumentSnapshot sessionDoc = await FirebaseFirestore.instance
+          .collection('sessions')
+          .doc(currentSessionId)
+          .get();
+      List<dynamic> currentPilots =
+          (sessionDoc.data() as Map<String, dynamic>?)?['pilots'] ?? [];
+      selectedPilots = List<Map<String, dynamic>>.from(currentPilots);
+    }
+    Map<String, Map<String, dynamic>> currentPilotsMap = {
+      for (var p in selectedPilots) p['id']: p
+    };
+    var snapshot = await FirebaseFirestore.instance.collection('users').get();
+    List<Map<String, dynamic>> pilots =
+        List<Map<String, dynamic>>.from(selectedPilots);
 
     showDialog(
       context: context,
@@ -79,24 +161,51 @@ class _LiveScreenState extends State<LiveScreen> {
           title: Text("Seleccionar Pilotos"),
           content: StatefulBuilder(
             builder: (context, setState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: snapshot.docs.map((doc) {
-                  String name = doc['name'];
-                  return CheckboxListTile(
-                    title: Text(name),
-                    value: pilots.any((p) => p['id'] == doc.id),
-                    onChanged: (bool? checked) {
-                      setState(() {
-                        if (checked == true) {
-                          pilots.add({'id': doc.id, 'name': name});
-                        } else {
-                          pilots.removeWhere((p) => p['id'] == doc.id);
-                        }
-                      });
-                    },
-                  );
-                }).toList(),
+              return Container(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: snapshot.docs.map((doc) {
+                    final data = doc.data()! as Map<String, dynamic>;
+                    String name = data['pilotName'] as String;
+                    bool isSelected =
+                        (currentPilotsMap[doc.id]?['active'] ?? false) as bool;
+                    return InkWell(
+                      onTap: () {
+                        setState(() {
+                          if (currentPilotsMap.containsKey(doc.id)) {
+                            int index =
+                                pilots.indexWhere((p) => p['id'] == doc.id);
+                            if (index != -1) {
+                              pilots[index]['active'] =
+                                  !(pilots[index]['active'] ?? false);
+                              currentPilotsMap[doc.id]!['active'] =
+                                  pilots[index]['active'];
+                            }
+                          } else {
+                            pilots.add({
+                              'id': doc.id,
+                              'name': name,
+                              'times': [],
+                              'active': true,
+                            });
+                            currentPilotsMap[doc.id] = pilots.last;
+                          }
+                        });
+                      },
+                      child: Card(
+                        color: isSelected ? Colors.green[200] : Colors.white,
+                        child: Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: ListTile(
+                            title: Text(name),
+                            subtitle: isSelected ? Text("Esperando tiempo...") : null,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
               );
             },
           ),
@@ -120,23 +229,28 @@ class _LiveScreenState extends State<LiveScreen> {
     );
   }
 
+  // Guarda un tiempo (simulado o real) para un piloto.
   void savePilotTime(String pilotId, int time) async {
     if (currentSessionId == null) return;
-
     DocumentReference sessionRef =
         FirebaseFirestore.instance.collection('sessions').doc(currentSessionId);
-    
     DocumentSnapshot sessionSnapshot = await sessionRef.get();
-    Map<String, dynamic> sessionData = sessionSnapshot.data() as Map<String, dynamic>;
-
+    Map<String, dynamic> sessionData =
+        sessionSnapshot.data()! as Map<String, dynamic>;
     List<dynamic> updatedPilots = sessionData['pilots'].map((pilot) {
-      if (pilot['id'] == pilotId) {
-        pilot['times'] = (pilot['times'] ?? [])..add(time);
+      final pilotMap = pilot as Map<String, dynamic>;
+      if (pilotMap['id'] == pilotId) {
+        pilotMap['times'] = (pilotMap['times'] ?? [])..add(time);
       }
-      return pilot;
+      return pilotMap;
     }).toList();
-
     sessionRef.update({'pilots': updatedPilots});
+  }
+
+  // Simula la recepción de un tiempo para un piloto.
+  void simulateReceiveTime(String pilotId) {
+    int simulatedTime = 123;
+    savePilotTime(pilotId, simulatedTime);
   }
 
   @override
@@ -145,12 +259,21 @@ class _LiveScreenState extends State<LiveScreen> {
     final bool isAdmin = authProvider.user?.email == 'admin@admin.com';
 
     return Scaffold(
-      appBar: AppBar(title: Text('Live')),
+      //appBar: AppBar(
+      //  title: Row(
+      //    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      //    children: [
+      //      Text('GetReady BMX'),
+      //      Text('Live'),
+      //    ],
+      //  ),
+      //),
       body: Padding(
         padding: EdgeInsets.all(16.0),
         child: Column(
           children: [
             if (isAdmin) ...[
+              // Botón para crear ubicación.
               Align(
                 alignment: Alignment.topRight,
                 child: ElevatedButton(
@@ -168,83 +291,218 @@ class _LiveScreenState extends State<LiveScreen> {
                             ),
                             TextField(
                               controller: distanceController,
-                              decoration: InputDecoration(
-                                  labelText: 'Distancia (m)'),
+                              decoration: InputDecoration(labelText: 'Distancia (m)'),
                               keyboardType: TextInputType.number,
                             ),
                           ],
                         ),
                         actions: [
                           TextButton(
-                              onPressed: createLocation,
-                              child: Text("Guardar"))
+                            onPressed: createLocation,
+                            child: Text("Guardar"),
+                          )
                         ],
                       ),
                     );
                   },
-                  child: Text('Crear'),
+                  child: Text('Crear Ubicación'),
                 ),
               ),
-            ],
-            ListTile(
-              title: Text('Fecha: ${selectedDate.toLocal()}'.split(' ')[0]),
-              trailing: Icon(Icons.calendar_today),
-              onTap: () async {
-                DateTime? pickedDate = await showDatePicker(
-                  context: context,
-                  initialDate: selectedDate,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime(2030),
-                );
-                if (pickedDate != null) {
-                  setState(() {
-                    selectedDate = pickedDate;
-                  });
-                }
-              },
-            ),
-            DropdownButton<String>(
-              value: selectedLocation,
-              hint: Text("Seleccionar Ubicación"),
-              items: locations.map((String location) {
-                return DropdownMenuItem<String>(
-                  value: location,
-                  child: Text(location),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  selectedLocation = newValue;
-                });
-              },
-            ),
-            ElevatedButton(
-              onPressed: startLiveSession,
-              child: Text('Iniciar Live'),
-            ),
-            if (currentSessionId != null) Expanded(
-              child: StreamBuilder<DocumentSnapshot>(
+              SizedBox(height: 10),
+              // Botón para crear sesión.
+              Align(
+                alignment: Alignment.topRight,
+                child: ElevatedButton(
+                  onPressed: showCreateSessionPopup,
+                  child: Text('Crear Sesión'),
+                ),
+              ),
+              SizedBox(height: 10),
+              // Dropdown para que el admin seleccione cuál de las últimas 5 sesiones es la live.
+              StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('sessions')
-                    .doc(currentSessionId)
+                    .orderBy('date', descending: true)
+                    .limit(5)
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) return CircularProgressIndicator();
-
-                  var data = snapshot.data!.data() as Map<String, dynamic>;
-                  List<dynamic> pilots = data['pilots'] ?? [];
-
-                  return ListView(
-                    children: pilots.map((pilot) {
-                      return ListTile(
-                        title: Text(pilot['name']),
-                        subtitle: Text("Tiempos: ${pilot['times']?.join(", ") ?? ''}"),
+                  if (!snapshot.hasData)
+                    return Center(child: CircularProgressIndicator());
+                  var docs = snapshot.data!.docs;
+                  final sessionIds = docs.map((doc) => doc.id).toList();
+                  final dropdownValue =
+                      sessionIds.contains(currentSessionId) ? currentSessionId : null;
+                  return DropdownButton<String>(
+                    value: dropdownValue,
+                    hint: Text("Seleccionar sesión"),
+                    items: docs.map((doc) {
+                      var data = doc.data() as Map<String, dynamic>;
+                      DateTime sessionDate = data['date'] is Timestamp
+                          ? (data['date'] as Timestamp).toDate()
+                          : data['date'];
+                      // Muestra solo "<ubicación>, <fecha>" sin prefijos.
+                      String displayText =
+                          "${data['location']}, ${sessionDate.toString().split(' ')[0]}";
+                      return DropdownMenuItem<String>(
+                        value: doc.id,
+                        child: Text(displayText),
                       );
                     }).toList(),
+                    onChanged: (String? newValue) async {
+                      if (newValue != null) {
+                        DocumentSnapshot sessionDoc = await FirebaseFirestore.instance
+                            .collection('sessions')
+                            .doc(newValue)
+                            .get();
+                        Map<String, dynamic> sessionData =
+                            sessionDoc.data()! as Map<String, dynamic>;
+                        DateTime docDate = sessionData['date'] is Timestamp
+                            ? (sessionData['date'] as Timestamp).toDate()
+                            : sessionData['date'];
+                        setState(() {
+                          currentSessionId = newValue;
+                          selectedLocation = sessionData['location'];
+                          selectedDate = docDate;
+                        });
+                      }
+                    },
                   );
                 },
               ),
-            ),
+              if (currentSessionId != null) ...[
+                SizedBox(height: 20),
+                Center(
+                  child: Text(
+                    // Encabezado sin prefijos, actualizado según la sesión seleccionada.
+                    "$selectedLocation, ${selectedDate.toString().split(' ')[0]}",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                SizedBox(height: 10),
+                ElevatedButton(
+                  onPressed: showPilotSelectionPopup,
+                  child: Text("Añadir Riders"),
+                ),
+                SizedBox(height: 10),
+                Expanded(
+                  child: StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('sessions')
+                        .doc(currentSessionId)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData)
+                        return Center(child: CircularProgressIndicator());
+                      var data = snapshot.data!.data()! as Map<String, dynamic>;
+                      List<dynamic> pilots = data['pilots'] ?? [];
+                      List<dynamic> activePilots = pilots.where((p) {
+                        return ((p as Map<String, dynamic>)['active'] ?? false)
+                            as bool;
+                      }).toList();
+                      return ListView(
+                        children: activePilots.map((pilot) {
+                          final pilotMap = pilot as Map<String, dynamic>;
+                          return InkWell(
+                            onTap: () {
+                              simulateReceiveTime(pilotMap['id'] as String);
+                            },
+                            child: Card(
+                              margin: EdgeInsets.symmetric(
+                                  vertical: 6.0, horizontal: 8.0),
+                              child: ListTile(
+                                title: Text(pilotMap['name'] as String),
+                                subtitle: Text(
+                                    "Tiempos: ${(pilotMap['times'] as List?)?.join(", ") ?? '---'}"),
+                                trailing: Icon(Icons.timer),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
+            // Para usuarios no admin: se muestra el encabezado (texto) y la lista de riders de la sesión live.
+            if (!isAdmin)
+              Expanded(
+                child: currentSessionId == null
+                    ? Center(child: Text("No hay sesión en vivo."))
+                    : StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('sessions')
+                            .doc(currentSessionId)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData)
+                            return Center(child: CircularProgressIndicator());
+                          var data =
+                              snapshot.data!.data()! as Map<String, dynamic>;
+                          DateTime sessionDate = data['date'] is Timestamp
+                              ? (data['date'] as Timestamp).toDate()
+                              : data['date'];
+                          return Column(
+                            children: [
+                              Center(
+                                child: Text(
+                                  "${data['location']}, ${sessionDate.toString().split(' ')[0]}",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              SizedBox(height: 10),
+                              Expanded(
+                                child: StreamBuilder<DocumentSnapshot>(
+                                  stream: FirebaseFirestore.instance
+                                      .collection('sessions')
+                                      .doc(currentSessionId)
+                                      .snapshots(),
+                                  builder: (context, snapshot2) {
+                                    if (!snapshot2.hasData)
+                                      return Center(
+                                          child: CircularProgressIndicator());
+                                    var sessionData =
+                                        snapshot2.data!.data() as Map<String, dynamic>;
+                                    List<dynamic> pilots = sessionData['pilots'] ?? [];
+                                    List<dynamic> activePilots = pilots.where((p) {
+                                      return ((p as Map<String, dynamic>)['active'] ??
+                                              false)
+                                          as bool;
+                                    }).toList();
+                                    return ListView(
+                                      children: activePilots.map((pilot) {
+                                        final pilotMap =
+                                            pilot as Map<String, dynamic>;
+                                        return InkWell(
+                                          onTap: () {
+                                            simulateReceiveTime(
+                                                pilotMap['id'] as String);
+                                          },
+                                          child: Card(
+                                            margin: EdgeInsets.symmetric(
+                                                vertical: 6.0, horizontal: 8.0),
+                                            child: ListTile(
+                                              title: Text(pilotMap['name'] as String),
+                                              subtitle: Text(
+                                                  "Tiempos: ${(pilotMap['times'] as List?)?.join(", ") ?? '---'}"),
+                                              trailing: Icon(Icons.timer),
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+              ),
           ],
         ),
       ),

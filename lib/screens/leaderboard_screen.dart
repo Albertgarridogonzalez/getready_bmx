@@ -6,7 +6,15 @@ class LeaderboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Leaderboard')),
+      //appBar: AppBar(
+      //  title: Row(
+      //    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      //    children: [
+      //      Text('GetReady BMX'),
+      //      Text('Leaderboard'),
+      //    ],
+      //  ),
+      //),
       body: StreamBuilder(
         stream: FirebaseFirestore.instance
             .collection('race_times')

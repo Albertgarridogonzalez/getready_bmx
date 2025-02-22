@@ -1,4 +1,3 @@
-// screens/records_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -6,7 +5,15 @@ class RecordsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Historial de Registros')),
+      //appBar: AppBar(
+      //  title: Row(
+      //    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      //    children: [
+      //      Text('GetReady BMX'),
+      //      Text('Historial'),
+      //    ],
+      //  ),
+      //),
       body: StreamBuilder(
         stream: FirebaseFirestore.instance
             .collection('race_times')
