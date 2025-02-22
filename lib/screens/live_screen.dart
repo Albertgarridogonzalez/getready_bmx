@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:getready_bmx/providers/theme_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -42,15 +43,13 @@ class _LiveScreenState extends State<LiveScreen> {
   // ---------------------------------------------------
 
   Timer? reconnectTimer;
+  bool debugActive = true; // Variable para activar/desactivar mensajes de debug
 
   // Función auxiliar para mostrar mensajes de depuración vía SnackBar
   void showDebugMessage(String message) {
-    // Nota: El duration se puede ajustar según tus necesidades
+    if (!debugActive) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message), duration: Duration(seconds: 2)),
     );
   }
 
@@ -96,7 +95,6 @@ class _LiveScreenState extends State<LiveScreen> {
     ).listen((device) {
       showDebugMessage(
           "📡 Dispositivo encontrado: '${device.name}' - ${device.id}");
-      // Si el nombre contiene "GetReady", lo conectamos
       if (device.name.contains("GetReady")) {
         showDebugMessage("✅ Dispositivo compatible encontrado");
         scanSubscription?.cancel();
@@ -151,11 +149,9 @@ class _LiveScreenState extends State<LiveScreen> {
         deviceId: deviceId,
       );
       showDebugMessage(
-          "🔍 Preparando suscripción a notify en ${characteristic.characteristicId}");
-      // Aumenta el delay para asegurar que la conexión esté estable (2 segundos)
+          "🔍 Suscribiéndose a notify en ${characteristic.characteristicId}");
       await Future.delayed(Duration(seconds: 2));
-
-      // Realiza una lectura manual para forzar el descubrimiento de la característica
+      // Lectura manual inicial para forzar el descubrimiento
       try {
         List<int> testValue =
             await flutterReactiveBle.readCharacteristic(characteristic);
@@ -164,15 +160,12 @@ class _LiveScreenState extends State<LiveScreen> {
       } catch (e) {
         showDebugMessage("⚠️ Error en lectura manual: $e");
       }
-
-      // Crea la suscripción a notificaciones
       dataSubscription = flutterReactiveBle
           .subscribeToCharacteristic(characteristic)
           .listen((value) {
         if (value.isNotEmpty) {
           String receivedString = String.fromCharCodes(value);
           showDebugMessage("📩 Notificación recibida: $receivedString");
-          // Extrae únicamente los dígitos (por ejemplo, de "Tiempo: 1332ms" extrae "1332")
           String numericString = receivedString.replaceAll(RegExp(r'\D'), '');
           showDebugMessage("🔢 Valor numérico extraído: $numericString");
           setState(() {
@@ -182,7 +175,7 @@ class _LiveScreenState extends State<LiveScreen> {
             int time = int.parse(numericString);
             savePilotTime(waitingPilotId!, time);
             showDebugMessage("📤 Tiempo guardado: $time");
-            // No se limpia waitingPilotId para seguir recibiendo tiempos para el mismo piloto
+            // Se mantiene waitingPilotId para seguir recibiendo tiempos para el mismo piloto
           }
         } else {
           showDebugMessage("⚠️ Valor recibido vacío");
@@ -375,7 +368,9 @@ class _LiveScreenState extends State<LiveScreen> {
                         });
                       },
                       child: Card(
-                        color: isSelected ? Colors.green[200] : Colors.white,
+                        color: isSelected
+                            ? const Color.fromARGB(255, 76, 99, 76)
+                            : const Color.fromARGB(255, 78, 78, 78),
                         child: Padding(
                           padding: EdgeInsets.all(8.0),
                           child: ListTile(
@@ -431,7 +426,7 @@ class _LiveScreenState extends State<LiveScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final bool isAdmin = authProvider.user?.email == 'admin@admin.com';
+    final bool isAdmin = authProvider.user?.email == '1@1.1';
     return Scaffold(
       // No se usa AppBar aquí, ya que el HomeScreen tiene uno.
       body: Stack(
@@ -518,16 +513,38 @@ class _LiveScreenState extends State<LiveScreen> {
                         }).toList(),
                         onChanged: (String? newValue) async {
                           if (newValue != null) {
+                            // Obtener todas las sesiones para desactivar las anteriores
+                            var sessionsSnapshot = await FirebaseFirestore
+                                .instance
+                                .collection('sessions')
+                                .get();
+
+                            // Crear una batch para actualizar todas las sesiones
+                            WriteBatch batch =
+                                FirebaseFirestore.instance.batch();
+
+                            for (var doc in sessionsSnapshot.docs) {
+                              batch.update(doc.reference,
+                                  {'active': doc.id == newValue});
+                            }
+
+                            await batch
+                                .commit(); // Ejecutar todas las actualizaciones en Firestore
+
+                            // Obtener datos de la sesión seleccionada
                             DocumentSnapshot sessionDoc =
                                 await FirebaseFirestore.instance
                                     .collection('sessions')
                                     .doc(newValue)
                                     .get();
+
                             Map<String, dynamic> sessionData =
                                 sessionDoc.data()! as Map<String, dynamic>;
                             DateTime docDate = sessionData['date'] is Timestamp
                                 ? (sessionData['date'] as Timestamp).toDate()
                                 : sessionData['date'];
+
+                            // Actualizar la UI
                             setState(() {
                               currentSessionId = newValue;
                               selectedLocation = sessionData['location'];
@@ -570,40 +587,72 @@ class _LiveScreenState extends State<LiveScreen> {
                             return ((p as Map<String, dynamic>)['active'] ??
                                 false) as bool;
                           }).toList();
-                          return ListView(
-                            children: activePilots.map((pilot) {
-                              final pilotMap = pilot as Map<String, dynamic>;
-                              return InkWell(
-                                onTap: () {
-                                  if (esp32Connected) {
-                                    setState(() {
-                                      waitingPilotId = pilotMap['id'];
-                                    });
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content: Text(
-                                              "Esperando datos del ESP32 para el piloto...")),
-                                    );
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content:
-                                              Text("ESP32 no está conectado")),
-                                    );
-                                  }
-                                },
-                                child: Card(
-                                  margin: EdgeInsets.symmetric(
-                                      vertical: 6.0, horizontal: 8.0),
-                                  child: ListTile(
-                                    title: Text(pilotMap['name'] as String),
-                                    subtitle: Text(
-                                        "Tiempos: ${(pilotMap['times'] as List?)?.join(", ") ?? '---'}"),
-                                    trailing: Icon(Icons.timer),
-                                  ),
-                                ),
+                          return Consumer<ThemeProvider>(
+                            builder: (context, themeProvider, child) {
+                              return ListView(
+                                children: activePilots.map((pilot) {
+                                  final pilotMap =
+                                      pilot as Map<String, dynamic>;
+                                  final String pilotId =
+                                      pilotMap['id'].toString();
+                                  final String pilotName =
+                                      pilotMap['name'].toString();
+                                  final bool isSelected =
+                                      (pilotId == waitingPilotId);
+                                  final bool isDarkMode =
+                                      themeProvider.isDarkMode;
+                                  final Color cardColor = isSelected
+                                      ? (isDarkMode
+                                          ? const Color.fromARGB(255, 40, 102,
+                                              43) // Dark mode: verde oscuro seleccionado
+                                          : const Color.fromARGB(255, 73, 175,
+                                              78)) // Light mode: verde oscuro seleccionado
+                                      : (isDarkMode
+                                          ? const Color.fromARGB(255, 54, 54,
+                                              54) // Dark mode: gris no seleccionado
+                                          : const Color.fromARGB(255, 168, 167,
+                                              167)); // Light mode: gris no seleccionado
+
+                                  return InkWell(
+                                    onTap: () {
+                                      if (esp32Connected) {
+                                        setState(() {
+                                          waitingPilotId = pilotId;
+                                        });
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                "Esperando datos del ESP32 para el piloto $pilotName..."),
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      } else {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content:
+                                                Text("ESP32 no está conectado"),
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: Card(
+                                      margin: EdgeInsets.symmetric(
+                                          vertical: 6.0, horizontal: 8.0),
+                                      color: cardColor,
+                                      child: ListTile(
+                                        title: Text(pilotName),
+                                        subtitle: Text(
+                                            "Tiempos: ${(pilotMap['times'] as List?)?.join(', ') ?? '---'}"),
+                                        trailing: Icon(Icons.timer),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
                               );
-                            }).toList(),
+                            },
                           );
                         },
                       ),
@@ -611,105 +660,55 @@ class _LiveScreenState extends State<LiveScreen> {
                   ],
                 ],
                 if (!isAdmin)
-                  Expanded(
-                    child: currentSessionId == null
-                        ? Center(child: Text("No hay sesión en vivo."))
-                        : StreamBuilder<DocumentSnapshot>(
-                            stream: FirebaseFirestore.instance
-                                .collection('sessions')
-                                .doc(currentSessionId)
-                                .snapshots(),
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData)
-                                return Center(
-                                    child: CircularProgressIndicator());
-                              var data = snapshot.data!.data()!
-                                  as Map<String, dynamic>;
-                              DateTime sessionDate = data['date'] is Timestamp
-                                  ? (data['date'] as Timestamp).toDate()
-                                  : data['date'];
-                              return Column(
-                                children: [
-                                  Center(
-                                    child: Text(
-                                      "${data['location']}, ${sessionDate.toString().split(' ')[0]}",
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                  SizedBox(height: 10),
-                                  Expanded(
-                                    child: StreamBuilder<DocumentSnapshot>(
-                                      stream: FirebaseFirestore.instance
-                                          .collection('sessions')
-                                          .doc(currentSessionId)
-                                          .snapshots(),
-                                      builder: (context, snapshot2) {
-                                        if (!snapshot2.hasData)
-                                          return Center(
-                                              child:
-                                                  CircularProgressIndicator());
-                                        var sessionData = snapshot2.data!.data()
-                                            as Map<String, dynamic>;
-                                        List<dynamic> pilots =
-                                            sessionData['pilots'] ?? [];
-                                        List<dynamic> activePilots =
-                                            pilots.where((p) {
-                                          return ((p as Map<String, dynamic>)[
-                                                  'active'] ??
-                                              false) as bool;
-                                        }).toList();
-                                        return ListView(
-                                          children: activePilots.map((pilot) {
-                                            final pilotMap =
-                                                pilot as Map<String, dynamic>;
-                                            return InkWell(
-                                              onTap: () {
-                                                if (esp32Connected) {
-                                                  setState(() {
-                                                    waitingPilotId =
-                                                        pilotMap['id'];
-                                                  });
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(
-                                                    SnackBar(
-                                                        content: Text(
-                                                            "Esperando datos del ESP32 para el piloto...")),
-                                                  );
-                                                } else {
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(
-                                                    SnackBar(
-                                                        content: Text(
-                                                            "ESP32 no está conectado")),
-                                                  );
-                                                }
-                                              },
-                                              child: Card(
-                                                margin: EdgeInsets.symmetric(
-                                                    vertical: 6.0,
-                                                    horizontal: 8.0),
-                                                child: ListTile(
-                                                  title: Text(pilotMap['name']
-                                                      as String),
-                                                  subtitle: Text(
-                                                      "Tiempos: ${(pilotMap['times'] as List?)?.join(", ") ?? '---'}"),
-                                                  trailing: Icon(Icons.timer),
-                                                ),
-                                              ),
-                                            );
-                                          }).toList(),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                  ),
+  Expanded(
+    child: StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('sessions')
+          .where('active', isEqualTo: true) // 🔥 Buscar solo sesiones activas
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
+
+        var docs = snapshot.data!.docs;
+        if (docs.isEmpty) {
+          return Center(child: Text("No hay sesiones activas en este momento."));
+        }
+
+        var sessionData = docs.first.data() as Map<String, dynamic>;
+        DateTime sessionDate = sessionData['date'] is Timestamp
+            ? (sessionData['date'] as Timestamp).toDate()
+            : sessionData['date'];
+
+        return Column(
+          children: [
+            Center(
+              child: Text(
+                "${sessionData['location']}, ${sessionDate.toString().split(' ')[0]}",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            SizedBox(height: 10),
+            Expanded(
+              child: ListView(
+                children: (sessionData['pilots'] as List<dynamic>)
+                    .where((p) => p['active'] == true) // 🔥 Filtra pilotos activos
+                    .map((pilot) {
+                  return Card(
+                    child: ListTile(
+                      title: Text(pilot['name']),
+                      subtitle: Text("Tiempos: ${(pilot['times'] as List?)?.join(', ') ?? '---'}"),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  ),
+
               ],
             ),
           ),
@@ -726,6 +725,30 @@ class _LiveScreenState extends State<LiveScreen> {
               child: Icon(
                 esp32Connected ? Icons.check_circle : Icons.cancel,
                 color: esp32Connected ? Colors.green : Colors.red,
+                size: 30,
+              ),
+            ),
+          ),
+          // Ícono para activar/desactivar el modo debug (a la derecha del ícono de conexión)
+          Positioned(
+            top: 16,
+            left: 56,
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  debugActive = !debugActive;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        "Debug ${debugActive ? 'activado' : 'desactivado'}"),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              child: Icon(
+                Icons.bug_report,
+                color: debugActive ? Colors.orange : Colors.grey,
                 size: 30,
               ),
             ),

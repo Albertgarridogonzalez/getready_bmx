@@ -116,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
-    final bool isAdmin = user?.email == 'admin@admin.com';
+    final bool isAdmin = user?.email == '1@1.1';
 
     return Scaffold(
       //appBar: AppBar(
