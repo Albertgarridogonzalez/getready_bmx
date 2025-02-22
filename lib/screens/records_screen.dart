@@ -3,6 +3,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:getready_bmx/providers/auth_provider.dart';
 
+/// Convierte milisegundos en un string con 3 decimales de segundos.
+/// p.ej. 4590 ms => "4.590"
+String formatMs(int ms) {
+  double seconds = ms / 1000.0;
+  return seconds.toStringAsFixed(3);
+}
+
 class RecordsScreen extends StatelessWidget {
   const RecordsScreen({Key? key}) : super(key: key);
 
@@ -10,11 +17,10 @@ class RecordsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;
-    // Aquí ajusta tu condición de admin
+    // Ajusta la condición de admin a tu gusto
     final bool isAdmin = (user?.email == '1@1.1' || user?.email == 'admin@admin.com');
 
     return Scaffold(
-      //appBar: AppBar(title: Text('Historial de sesiones')),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('sessions')
@@ -30,7 +36,6 @@ class RecordsScreen extends StatelessWidget {
             return Center(child: Text('No hay sesiones registradas.'));
           }
 
-          // Construimos la lista de Cards (una por sesión)
           final sessionDocs = snapshot.data!.docs;
 
           return ListView.builder(
@@ -44,28 +49,24 @@ class RecordsScreen extends StatelessWidget {
               if (data['date'] is Timestamp) {
                 sessionDate = (data['date'] as Timestamp).toDate();
               } else {
-                // Si ya es DateTime
                 sessionDate = data['date'] ?? DateTime.now();
               }
 
-              // Para formatear la fecha sin usar intl:
+              // Fecha con formato yyyy-mm-dd (sin usar intl)
               final dateStr =
                   "${sessionDate.year}-${sessionDate.month.toString().padLeft(2, '0')}-${sessionDate.day.toString().padLeft(2, '0')}";
 
-              // También podrías simplemente usar: sessionDate.toString().split(' ')[0]
               final location = data['location'] ?? 'Ubicación desconocida';
-
-              // Pilotos
               final List<dynamic> pilots = data['pilots'] ?? [];
 
-              // Si eres admin, ves todos; si no, filtras por tu uid
+              // Filtra pilotos si no es admin
               final filteredPilots = isAdmin
                   ? pilots
                   : pilots.where((p) => p['id'] == user?.uid).toList();
 
-              // Si no eres admin y no tienes tiempos en esa sesión, no mostramos la Card
+              // Si no eres admin y no hay pilotos tuyos, no muestras la card
               if (!isAdmin && filteredPilots.isEmpty) {
-                return SizedBox.shrink(); // Oculta esta sesión
+                return SizedBox.shrink();
               }
 
               return Card(
@@ -75,7 +76,7 @@ class RecordsScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ENCABEZADO: ubicación + fecha
+                      // Encabezado (ubicación + fecha)
                       Text(
                         location,
                         style: TextStyle(
@@ -97,8 +98,20 @@ class RecordsScreen extends StatelessWidget {
                           final pilotName = pilotMap['name'] ?? 'Desconocido';
                           final List<dynamic> times = pilotMap['times'] ?? [];
 
-                          // Convertimos la lista de tiempos a string
-                          final timesStr = times.join(', ');
+                          // Ordena los tiempos de menor a mayor
+                          final sortedTimes = times
+                              .map((t) => t as int)
+                              .toList()
+                                ..sort();
+
+                          // Convertimos cada tiempo a X.XXX y los unimos con doble espacio
+                          final formattedTimes = sortedTimes.map((t) {
+                            return formatMs(t);
+                          }).toList();
+
+                          final timesStr = formattedTimes.isEmpty
+                              ? '---'
+                              : formattedTimes.join("  ");
 
                           return ListTile(
                             leading: Icon(Icons.person),

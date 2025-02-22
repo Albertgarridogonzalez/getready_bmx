@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Convierte milisegundos en un string con 3 decimales de segundos.
+/// p.ej. 4590 ms => "4.590"
+String formatMs(int ms) {
+  double seconds = ms / 1000.0;
+  return seconds.toStringAsFixed(3);
+}
+
 class LeaderboardScreen extends StatelessWidget {
   const LeaderboardScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Leaderboard por Ubicación')),
+      //appBar: AppBar(title: Text('Leaderboard por Ubicación')),
       body: StreamBuilder<QuerySnapshot>(
         // Leemos TODAS las sesiones
         stream: FirebaseFirestore.instance.collection('sessions').snapshots(),
@@ -41,14 +48,14 @@ class LeaderboardScreen extends StatelessWidget {
               if (times.isEmpty) continue;
 
               // El mejor tiempo de esa lista
-              final int bestTimePilot = (times as List)
+              final int bestTimePilot = times
                   .map((t) => t as int)
                   .reduce((a, b) => a < b ? a : b);
 
               final existingPilot = locationToPilots[location]![pilotId];
 
               if (existingPilot == null) {
-                // Si no existía, creamos
+                // Si no existía, lo creamos
                 locationToPilots[location]![pilotId] = {
                   'name': pilotName,
                   'bestTime': bestTimePilot,
@@ -112,7 +119,10 @@ class LeaderboardScreen extends StatelessWidget {
                         final i = entry.key;       // índice (0,1,2,3,4)
                         final pilot = entry.value; // { 'name':..., 'bestTime':... }
                         final name = pilot['name'] ?? '---';
-                        final bestTime = pilot['bestTime'] ?? 999999;
+                        final int bestTimeMs = pilot['bestTime'] ?? 999999;
+
+                        // Convertimos ms -> seg con 3 decimales
+                        final bestTimeFormatted = formatMs(bestTimeMs);
 
                         // Definimos el leading según posición:
                         Widget leadingWidget;
@@ -122,7 +132,7 @@ class LeaderboardScreen extends StatelessWidget {
                             leadingWidget = Icon(
                               Icons.emoji_events,
                               color: Colors.amber,
-                               size: 35,
+                              size: 35,
                             );
                             break;
                           case 1:
@@ -131,7 +141,6 @@ class LeaderboardScreen extends StatelessWidget {
                               Icons.emoji_events,
                               color: Colors.grey,
                               size: 35,
-
                             );
                             break;
                           case 2:
@@ -139,7 +148,7 @@ class LeaderboardScreen extends StatelessWidget {
                             leadingWidget = Icon(
                               Icons.emoji_events,
                               color: Colors.brown,
-                               size: 35,
+                              size: 35,
                             );
                             break;
                           case 3:
@@ -163,7 +172,7 @@ class LeaderboardScreen extends StatelessWidget {
                         return ListTile(
                           leading: leadingWidget,
                           title: Text(name),
-                          subtitle: Text("Mejor tiempo: $bestTime seg"),
+                          subtitle: Text("Mejor tiempo: $bestTimeFormatted seg"),
                         );
                       }).toList(),
                     ],

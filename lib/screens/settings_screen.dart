@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:getready_bmx/providers/auth_provider.dart';
@@ -13,19 +12,16 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final flutterReactiveBle = FlutterReactiveBle();
   final TextEditingController pilotNameController = TextEditingController();
 
-  bool isConnected = false;
-  String? deviceId;
-  StreamSubscription<ConnectionStateUpdate>? connectionSubscription;
-  StreamSubscription<List<int>>? dataSubscription;
+  // Controladores para el popup de “Subir Publicación”
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _contentController = TextEditingController();
+  final TextEditingController _imageUrlController = TextEditingController();
 
-  // ---------- Variables para la sección de admin (sesiones/pilotos/tiempos) ----------
+  // ---------- Variables que ya tenías para la sección de admin (sesiones/pilotos/tiempos) ----------
   String? _selectedSessionId;  // ID de la sesión elegida
   String? _selectedPilotId;    // ID del piloto elegido dentro de esa sesión
-
-  // Para editar un tiempo puntual, usamos un TextEditingController
   final TextEditingController _editTimeController = TextEditingController();
 
   @override
@@ -78,41 +74,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // -------------------- BLE Lógica (ya existente) --------------------
-  void scanAndConnect() {
-    final serviceUuid = Uuid.parse("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
-    final characteristicUuid = Uuid.parse("beb5483e-36e1-4688-b7f5-ea07361b26a8");
-
-    flutterReactiveBle.scanForDevices(withServices: [serviceUuid]).listen(
-      (device) {
-        if (device.name == "GetReady_BMX") {
-          flutterReactiveBle
-              .connectToDevice(id: device.id)
-              .listen((connectionState) {
-            if (connectionState.connectionState == DeviceConnectionState.connected) {
-              setState(() {
-                isConnected = true;
-                deviceId = device.id;
-              });
-            }
-          }, onError: (error) {
-            print("Error de conexión: $error");
-          });
-        }
-      },
-    );
-  }
-
-  void disconnectDevice() {
-    if (isConnected && deviceId != null) {
-      flutterReactiveBle.clearGattCache(deviceId!);
-      setState(() {
-        isConnected = false;
-        deviceId = null;
-      });
-    }
-  }
-
+  // -----------------------------------------------------------------------
+  // Funciones para editar nombre de piloto, etc.
+  // -----------------------------------------------------------------------
   Future<void> updatePilotName(String userId) async {
     await FirebaseFirestore.instance.collection('users').doc(userId).update({
       'pilotName': pilotNameController.text,
@@ -126,7 +90,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // 1) Función para eliminar un tiempo de la lista del piloto en la sesión
+  // Funciones para eliminar y editar tiempos en sesiones (ya estaban en tu código)
   // -----------------------------------------------------------------------
   Future<void> _deleteTime(String sessionId, String pilotId, int timeIndex) async {
     final sessionRef = FirebaseFirestore.instance.collection('sessions').doc(sessionId);
@@ -136,7 +100,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final data = sessionDoc.data() as Map<String, dynamic>;
     List<dynamic> pilots = data['pilots'] ?? [];
 
-    // Buscamos el piloto
     for (int i = 0; i < pilots.length; i++) {
       final pilot = pilots[i] as Map<String, dynamic>;
       if (pilot['id'] == pilotId) {
@@ -149,14 +112,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         break;
       }
     }
-
-    // Guardamos cambios
     await sessionRef.update({'pilots': pilots});
   }
 
-  // -----------------------------------------------------------------------
-  // 2) Función para editar un tiempo puntual
-  // -----------------------------------------------------------------------
   Future<void> _editTime(String sessionId, String pilotId, int timeIndex, int newTime) async {
     final sessionRef = FirebaseFirestore.instance.collection('sessions').doc(sessionId);
     final sessionDoc = await sessionRef.get();
@@ -165,7 +123,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final data = sessionDoc.data() as Map<String, dynamic>;
     List<dynamic> pilots = data['pilots'] ?? [];
 
-    // Buscamos el piloto
     for (int i = 0; i < pilots.length; i++) {
       final pilot = pilots[i] as Map<String, dynamic>;
       if (pilot['id'] == pilotId) {
@@ -178,12 +135,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         break;
       }
     }
-
-    // Guardamos cambios
     await sessionRef.update({'pilots': pilots});
   }
 
-  // Diálogo para editar un tiempo
   void _showEditTimeDialog(String sessionId, String pilotId, int timeIndex, int currentTime) {
     _editTimeController.text = currentTime.toString();
     showDialog(
@@ -198,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context), 
+              onPressed: () => Navigator.pop(context),
               child: Text('Cancelar'),
             ),
             ElevatedButton(
@@ -218,13 +172,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Construye la sección de administración (drop-down de sesión y piloto, lista de tiempos)
+  // Sección de administración: elegir sesión, piloto y gestionar tiempos
   // -----------------------------------------------------------------------
   Widget _buildAdminSessionPilotTimesSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Dropdown de sesiones
         Text(
           "Seleccionar Sesión:",
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -249,7 +202,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (val) {
                 setState(() {
                   _selectedSessionId = val;
-                  _selectedPilotId = null; // reset al cambiar de sesión
+                  _selectedPilotId = null;
                 });
               },
               items: docs.map((doc) {
@@ -331,7 +284,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Construye la lista de tiempos del piloto y botones para eliminar/editar
   Widget _buildTimesList(String sessionId, String pilotId) {
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance
@@ -349,7 +301,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final data = doc.data() as Map<String, dynamic>;
         final List<dynamic> pilots = data['pilots'] ?? [];
 
-        // Localizamos el piloto
         final pilotMap = pilots.firstWhere(
           (p) => (p['id'] == pilotId),
           orElse: () => null,
@@ -376,14 +327,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Botón Editar
                     IconButton(
                       icon: Icon(Icons.edit),
                       onPressed: () {
                         _showEditTimeDialog(sessionId, pilotId, index, timeVal);
                       },
                     ),
-                    // Botón Eliminar
                     IconButton(
                       icon: Icon(Icons.delete),
                       onPressed: () async {
@@ -401,124 +350,197 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Construcción del widget principal
+  // Popup para Subir Publicación (nueva “noticia”)
   // -----------------------------------------------------------------------
+  void _showPublicationPopup() {
+    // Limpiamos los campos antes de abrir
+    _titleController.clear();
+    _contentController.clear();
+    _imageUrlController.clear();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Nueva Publicación'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _titleController,
+                  decoration: InputDecoration(labelText: 'Título'),
+                ),
+                TextField(
+                  controller: _contentController,
+                  decoration: InputDecoration(labelText: 'Contenido'),
+                  maxLines: 3,
+                ),
+                TextField(
+                  controller: _imageUrlController,
+                  decoration: InputDecoration(labelText: 'URL de la imagen'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                // Subimos a Firestore en la colección "news"
+                await FirebaseFirestore.instance.collection('news').add({
+                  'title': _titleController.text,
+                  'content': _contentController.text,
+                  'imageUrl': _imageUrlController.text,
+                  'timestamp': FieldValue.serverTimestamp(),
+                });
+                Navigator.pop(context);
+              },
+              child: Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
-    final bool isAdmin = user?.email == '1@1.1' || user?.email == 'admin@admin.com';
+    final bool isAdmin =
+        user?.email == '1@1.1' || user?.email == 'admin@admin.com';
 
     return Scaffold(
       body: SingleChildScrollView(
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              // Campo para cambiar nombre de piloto
-              TextField(
+  child: Padding(
+    padding: EdgeInsets.all(16.0),
+    child: Column(
+      children: [
+        // --- AQUÍ: Reemplazamos los dos Widgets con una Row ---
+        Row(
+          children: [
+            // Ocupa el espacio disponible antes del botón
+            Expanded(
+              child: TextField(
                 controller: pilotNameController,
                 decoration: InputDecoration(labelText: 'Nombre del piloto'),
               ),
-              SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: user != null ? () => updatePilotName(user.uid) : null,
-                child: Text('Guardar Nombre'),
-              ),
-              SizedBox(height: 20),
-              // Botón para cerrar sesión
-              ElevatedButton(
-                onPressed: () async {
-                  await authProvider.signOut();
-                  Navigator.of(context).pushNamedAndRemoveUntil(
-                    '/login',
-                    (route) => false,
-                  );
-                },
-                child: Text('Cerrar Sesión'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              ),
-              SizedBox(height: 20),
-              // Solo si es admin, mostramos botón de conexión al ESP32
-              if (isAdmin) ...[
-                ElevatedButton(
-                  onPressed: isConnected ? disconnectDevice : scanAndConnect,
-                  child: Text(isConnected ? 'Desconectar ESP32' : 'Conectar al ESP32'),
+            ),
+            SizedBox(width: 10), // Pequeño espacio horizontal
+            ElevatedButton(
+              onPressed: () async {
+                await authProvider.signOut();
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  '/login',
+                  (route) => false,
+                );
+              },
+              child: Text('Cerrar Sesión'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            ),
+            if (isAdmin) ...[
+          ElevatedButton(
+            onPressed: _showPublicationPopup,
+            child: Text('Subir Publicación'),
+          ),
+          SizedBox(height: 20),
+        ],
+          ],
+        ),
+        SizedBox(height: 10),
+        ElevatedButton(
+          onPressed: user != null ? () => updatePilotName(user.uid) : null,
+          child: Text('Guardar Nombre'),
+        ),
+        SizedBox(height: 20),
+
+        // Botón para cerrar sesión (lo tenías repetido, así que si ya está en la Row, quizás lo quites)
+        // ...
+
+        SizedBox(height: 20),
+
+        // Solo si es admin, mostramos el botón de "Subir Publicación"
+        
+
+        // Sección para cambiar tema (oscuro/claro) y paleta de colores
+        Consumer<ThemeProvider>(
+          builder: (context, themeProvider, child) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Modo Oscuro / Claro", style: TextStyle(fontSize: 16)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(themeProvider.isDarkMode ? "Oscuro" : "Claro"),
+                    Switch(
+                      value: themeProvider.isDarkMode,
+                      onChanged: (value) async {
+                        themeProvider.setDarkMode(value);
+                        if (user != null) {
+                          await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user.uid)
+                              .update({'darkMode': value});
+                        }
+                      },
+                    ),
+                  ],
                 ),
                 SizedBox(height: 20),
-              ],
-
-              // Sección para cambiar el tema y la paleta de colores
-              Consumer<ThemeProvider>(
-                builder: (context, themeProvider, child) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Modo Oscuro / Claro", style: TextStyle(fontSize: 16)),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(themeProvider.isDarkMode ? "Oscuro" : "Claro"),
-                          Switch(
-                            value: themeProvider.isDarkMode,
-                            onChanged: (value) async {
-                              themeProvider.setDarkMode(value);
-                              final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                              String uid = authProvider.user!.uid;
-                              await FirebaseFirestore.instance.collection('users').doc(uid).update({
-                                'darkMode': value,
-                              });
-                            },
+                Text("Selecciona la paleta de colores:",
+                    style: TextStyle(fontSize: 16)),
+                SizedBox(
+                  height: 80,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: ColorPalette.values.map((palette) {
+                      return GestureDetector(
+                        onTap: () async {
+                          themeProvider.setPalette(palette);
+                          if (user != null) {
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(user.uid)
+                                .update({
+                              'palette': palette.toString().split('.').last,
+                            });
+                          }
+                        },
+                        child: Container(
+                          margin: EdgeInsets.all(8.0),
+                          width: 60,
+                          decoration: BoxDecoration(
+                            color: themeProvider
+                                .getSampleColorForPalette(palette),
+                            border: themeProvider.palette == palette
+                                ? Border.all(width: 3, color: Colors.white)
+                                : null,
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ],
-                      ),
-                      SizedBox(height: 20),
-                      Text("Selecciona la paleta de colores:", style: TextStyle(fontSize: 16)),
-                      SizedBox(
-                        height: 80,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: ColorPalette.values.map((palette) {
-                            return GestureDetector(
-                              onTap: () async {
-                                themeProvider.setPalette(palette);
-                                final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                                String uid = authProvider.user!.uid;
-                                await FirebaseFirestore.instance
-                                    .collection('users')
-                                    .doc(uid)
-                                    .update({
-                                  'palette': palette.toString().split('.').last,
-                                });
-                              },
-                              child: Container(
-                                margin: EdgeInsets.all(8.0),
-                                width: 60,
-                                decoration: BoxDecoration(
-                                  color: themeProvider.getSampleColorForPalette(palette),
-                                  border: themeProvider.palette == palette
-                                      ? Border.all(width: 3, color: Colors.white)
-                                      : null,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            );
-                          }).toList(),
                         ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-
-              SizedBox(height: 20),
-
-              // ---------- SECCIÓN DE ADMIN: SELECCIONAR SESIÓN, PILOTO Y EDITAR TIEMPOS ----------
-              if (isAdmin) _buildAdminSessionPilotTimesSection(),
-            ],
-          ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
-      ),
+
+        SizedBox(height: 20),
+
+        // ---------- SECCIÓN DE ADMIN: EDITAR TIEMPOS DE SESIÓN ----------
+        if (isAdmin) _buildAdminSessionPilotTimesSection(),
+      ],
+    ),
+  ),
+),
+
     );
   }
 }
