@@ -29,7 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Encabezado con imagen (puedes ajustar altura, opacidad, etc.)
                   Container(
                     width: double.infinity,
-                    height: constraints.maxHeight * 0.45,
+                    height: constraints.maxHeight * 0.35,
                     decoration: BoxDecoration(
                       color: Colors.blue,
                       image: DecorationImage(
@@ -45,9 +45,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Container(
                       padding: EdgeInsets.symmetric(horizontal: 16.0),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.start,
                         children: [
-                          SizedBox(height: 16),
+                          SizedBox(height: 30),
                           Text(
                             isRegistering ? 'Registro' : 'Login',
                             style: TextStyle(
