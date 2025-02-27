@@ -21,13 +21,22 @@ class LeaderboardScreen extends StatelessWidget {
             return Center(child: CircularProgressIndicator());
           }
           
+          // Mapea cada ubicación a la lista de pilotos y a su distancia (en metros)
           Map<String, List<Map<String, dynamic>>> locationToPilots = {};
+          Map<String, int> locationToDistance = {};
 
           if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
             for (var doc in snapshot.data!.docs) {
               final data = doc.data() as Map<String, dynamic>;
               final location = data['location'] ?? 'Sin ubicación';
+              // Asumimos que 'distance' viene en metros
+              final int distance = data['distance'] ?? 0;
               final List<dynamic> pilots = data['pilots'] ?? [];
+
+              // Si ya se registró la ubicación, nos quedamos con el primero (o podrías promediar, etc.)
+              if (!locationToDistance.containsKey(location)) {
+                locationToDistance[location] = distance;
+              }
 
               locationToPilots.putIfAbsent(location, () => []);
 
@@ -47,10 +56,11 @@ class LeaderboardScreen extends StatelessWidget {
             }
           }
 
+          // Ordenar pilotos en cada ubicación y rellenar la lista hasta 20 elementos
           locationToPilots.forEach((key, list) {
             list.sort((a, b) => (a['bestTime'] as int).compareTo(b['bestTime'] as int));
-            while (list.length < 10) {
-              list.add({ 'name': '---', 'bestTime': 999999 });
+            while (list.length < 20) {
+              list.add({'name': '---', 'bestTime': 999999});
             }
           });
 
@@ -58,67 +68,59 @@ class LeaderboardScreen extends StatelessWidget {
 
           return Padding(
             padding: EdgeInsets.symmetric(horizontal: 8.0),
-            child: GridView.builder(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                childAspectRatio: 0.8, // Ajustado para hacer las cards más altas
-              ),
+            child: ListView.builder(
               itemCount: locationKeys.length,
               itemBuilder: (context, index) {
                 final loc = locationKeys[index];
                 final pilots = locationToPilots[loc]!.take(10).toList();
+                final distance = locationToDistance[loc] ?? 0;
 
                 return Card(
-                  margin: EdgeInsets.all(8),
+                  margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Título con la ubicación y la distancia
                         Text(
-                          loc,
+                          "$loc - ${distance}m",
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         Divider(),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: pilots.length,
-                            itemBuilder: (context, i) {
-                              final name = pilots[i]['name'] ?? '---';
-                              final int bestTimeMs = pilots[i]['bestTime'] ?? 999999;
-                              final bestTimeFormatted = formatMs(bestTimeMs);
+                        ...pilots.take(5).map((pilot) {
+                          final name = pilot['name'] ?? '---';
+                          final int bestTimeMs = pilot['bestTime'] ?? 999999;
+                          final bestTimeFormatted = formatMs(bestTimeMs);
 
-                              Widget leadingWidget;
-                              switch (i) {
-                                case 0:
-                                  leadingWidget = Icon(Icons.emoji_events, color: Colors.amber, size: 35);
-                                  break;
-                                case 1:
-                                  leadingWidget = Icon(Icons.emoji_events, color: Colors.grey, size: 35);
-                                  break;
-                                case 2:
-                                  leadingWidget = Icon(Icons.emoji_events, color: Colors.brown, size: 35);
-                                  break;
-                                default:
-                                  leadingWidget = CircleAvatar(
-                                    backgroundColor: Colors.blueGrey,
-                                    child: Text((i + 1).toString()),
-                                  );
-                              }
-
-                              return ListTile(
-                                leading: leadingWidget,
-                                title: Text(name),
-                                subtitle: Text("Mejor tiempo: $bestTimeFormatted seg"),
+                          Widget leadingWidget;
+                          final int position = pilots.indexOf(pilot);
+                          switch (position) {
+                            case 0:
+                              leadingWidget = Icon(Icons.emoji_events, color: Colors.amber, size: 35);
+                              break;
+                            case 1:
+                              leadingWidget = Icon(Icons.emoji_events, color: Colors.grey, size: 35);
+                              break;
+                            case 2:
+                              leadingWidget = Icon(Icons.emoji_events, color: Colors.brown, size: 35);
+                              break;
+                            default:
+                              leadingWidget = CircleAvatar(
+                                backgroundColor: Colors.blueGrey,
+                                child: Text((position + 1).toString()),
                               );
-                            },
-                          ),
-                        ),
+                          }
+
+                          return ListTile(
+                            leading: leadingWidget,
+                            title: Text(name),
+                            subtitle: Text("Mejor tiempo: $bestTimeFormatted seg"),
+                          );
+                        }).toList(),
                       ],
                     ),
                   ),

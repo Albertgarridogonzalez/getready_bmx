@@ -19,9 +19,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _imageUrlController = TextEditingController();
 
-  // ---------- Variables que ya tenías para la sección de admin (sesiones/pilotos/tiempos) ----------
-  String? _selectedSessionId;  // ID de la sesión elegida
-  String? _selectedPilotId;    // ID del piloto elegido dentro de esa sesión
+  // Controlador para el popup de “Crear Piloto”
+  final TextEditingController _newPilotController = TextEditingController();
+
+  // ---------- Variables para admin (sesiones/pilotos/tiempos) ----------
+  String? _selectedSessionId; // ID de la sesión elegida
+  String? _selectedPilotId; // ID del piloto elegido dentro de esa sesión
   final TextEditingController _editTimeController = TextEditingController();
 
   @override
@@ -75,7 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Funciones para editar nombre de piloto, etc.
+  // Función para actualizar el nombre del piloto
   // -----------------------------------------------------------------------
   Future<void> updatePilotName(String userId) async {
     await FirebaseFirestore.instance.collection('users').doc(userId).update({
@@ -90,7 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Funciones para eliminar y editar tiempos en sesiones (ya estaban en tu código)
+  // Funciones para eliminar y editar tiempos en sesiones
   // -----------------------------------------------------------------------
   Future<void> _deleteTime(String sessionId, String pilotId, int timeIndex) async {
     final sessionRef = FirebaseFirestore.instance.collection('sessions').doc(sessionId);
@@ -407,6 +410,158 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // -----------------------------------------------------------------------
+  // Popup para Crear Piloto (solo solicita el nombre)
+  // -----------------------------------------------------------------------
+  void _showCreatePilotPopup() {
+    _newPilotController.clear();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Crear Nuevo Piloto'),
+          content: TextField(
+            controller: _newPilotController,
+            decoration: InputDecoration(labelText: 'Nombre del piloto'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final pilotName = _newPilotController.text.trim();
+                if (pilotName.isNotEmpty) {
+                  // Se crea un documento en 'users' con email vacío, role "user" y pilotName
+                  await FirebaseFirestore.instance.collection('users').add({
+                    'email': '',
+                    'role': 'user',
+                    'pilotName': pilotName,
+                  });
+                  
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Piloto creado exitosamente'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+              child: Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Popup para borrar pilotos (lista de cards de pilotos)
+  // -----------------------------------------------------------------------
+  void _showDeletePilotsPopup() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Borrar Pilotos'),
+          content: Container(
+            width: double.maxFinite,
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .where('role', isEqualTo: 'user')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Center(child: CircularProgressIndicator());
+                }
+                final docs = snapshot.data!.docs;
+                if (docs.isEmpty) {
+                  return Text("No hay pilotos para borrar.");
+                }
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final pilotName = data['pilotName'] ?? 'Sin nombre';
+                    return Card(
+                      child: ListTile(
+                        title: Text(pilotName),
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            // Confirmar borrado
+                            showDialog(
+                              context: context,
+                              builder: (context) {
+                                return AlertDialog(
+                                  title: Text('Confirmar borrado'),
+                                  content: Text('¿Estás seguro de borrar a $pilotName?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: Text('Cancelar'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () async {
+                                        Navigator.pop(context); // Cierra confirmación
+                                        Navigator.pop(context); // Cierra popup de borrar pilotos
+                                        await _deletePilot(doc.id);
+                                      },
+                                      child: Text('Borrar', style: TextStyle(color: Colors.red)),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Función para borrar piloto y limpiar datos en sesiones
+  Future<void> _deletePilot(String pilotId) async {
+    // Borrar usuario en la colección 'users'
+    await FirebaseFirestore.instance.collection('users').doc(pilotId).delete();
+
+    // Buscar y actualizar sesiones en las que aparezca este piloto
+    QuerySnapshot sessionsSnapshot = await FirebaseFirestore.instance.collection('sessions').get();
+    WriteBatch batch = FirebaseFirestore.instance.batch();
+    for (var sessionDoc in sessionsSnapshot.docs) {
+      Map<String, dynamic> sessionData = sessionDoc.data() as Map<String, dynamic>;
+      List<dynamic> pilots = sessionData['pilots'] ?? [];
+      // Filtrar pilotos removiendo aquél con id == pilotId
+      List<dynamic> updatedPilots = pilots.where((p) => (p['id'] as String) != pilotId).toList();
+      if (updatedPilots.length != pilots.length) {
+        batch.update(sessionDoc.reference, {'pilots': updatedPilots});
+      }
+    }
+    await batch.commit();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Piloto borrado exitosamente'), backgroundColor: Colors.green),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
@@ -416,131 +571,142 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       body: SingleChildScrollView(
-  child: Padding(
-    padding: EdgeInsets.all(16.0),
-    child: Column(
-      children: [
-        // --- AQUÍ: Reemplazamos los dos Widgets con una Row ---
-        Row(
-          children: [
-            // Ocupa el espacio disponible antes del botón
-            Expanded(
-              child: TextField(
-                controller: pilotNameController,
-                decoration: InputDecoration(labelText: 'Nombre del piloto'),
-              ),
-            ),
-            SizedBox(width: 10), // Pequeño espacio horizontal
-            ElevatedButton(
-              onPressed: () async {
-                await authProvider.signOut();
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  '/login',
-                  (route) => false,
-                );
-              },
-              child: Text('Cerrar Sesión'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            ),
-            if (isAdmin) ...[
-          ElevatedButton(
-            onPressed: _showPublicationPopup,
-            child: Text('Subir Publicación'),
-          ),
-          SizedBox(height: 20),
-        ],
-          ],
-        ),
-        SizedBox(height: 10),
-        ElevatedButton(
-          onPressed: user != null ? () => updatePilotName(user.uid) : null,
-          child: Text('Guardar Nombre'),
-        ),
-        SizedBox(height: 20),
-
-        // Botón para cerrar sesión (lo tenías repetido, así que si ya está en la Row, quizás lo quites)
-        // ...
-
-        SizedBox(height: 20),
-
-        // Solo si es admin, mostramos el botón de "Subir Publicación"
-        
-
-        // Sección para cambiar tema (oscuro/claro) y paleta de colores
-        Consumer<ThemeProvider>(
-          builder: (context, themeProvider, child) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Modo Oscuro / Claro", style: TextStyle(fontSize: 16)),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(themeProvider.isDarkMode ? "Oscuro" : "Claro"),
-                    Switch(
-                      value: themeProvider.isDarkMode,
-                      onChanged: (value) async {
-                        themeProvider.setDarkMode(value);
-                        if (user != null) {
-                          await FirebaseFirestore.instance
-                              .collection('users')
-                              .doc(user.uid)
-                              .update({'darkMode': value});
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              // --- Fila superior con nombre, botón de cerrar sesión y menú de ajustes para admin ---
+              Row(
+                children: [
+                  // Campo para el nombre del piloto
+                  Expanded(
+                    child: TextField(
+                      controller: pilotNameController,
+                      decoration: InputDecoration(labelText: 'Nombre del piloto'),
+                    ),
+                  ),
+                  SizedBox(width: 20),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await authProvider.signOut();
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        '/login',
+                        (route) => false,
+                      );
+                    },
+                    child: Text('Cerrar Sesión'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  ),
+                  SizedBox(width: 20),
+                  if (isAdmin)
+                    // Menú desplegable de ajustes para admin
+                    PopupMenuButton<String>(
+                      icon: Icon(Icons.settings, color: const Color.fromARGB(255, 70, 69, 69)),
+                      onSelected: (value) {
+                        if (value == 'subir') {
+                          _showPublicationPopup();
+                        } else if (value == 'crear') {
+                          _showCreatePilotPopup();
+                        } else if (value == 'borrar') {
+                          _showDeletePilotsPopup();
                         }
                       },
-                    ),
-                  ],
-                ),
-                SizedBox(height: 20),
-                Text("Selecciona la paleta de colores:",
-                    style: TextStyle(fontSize: 16)),
-                SizedBox(
-                  height: 80,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: ColorPalette.values.map((palette) {
-                      return GestureDetector(
-                        onTap: () async {
-                          themeProvider.setPalette(palette);
-                          if (user != null) {
-                            await FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(user.uid)
-                                .update({
-                              'palette': palette.toString().split('.').last,
-                            });
-                          }
-                        },
-                        child: Container(
-                          margin: EdgeInsets.all(8.0),
-                          width: 60,
-                          decoration: BoxDecoration(
-                            color: themeProvider
-                                .getSampleColorForPalette(palette),
-                            border: themeProvider.palette == palette
-                                ? Border.all(width: 3, color: Colors.white)
-                                : null,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                        PopupMenuItem<String>(
+                          value: 'subir',
+                          child: Text('Subir Publicación'),
                         ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ],
-            );
-          },
+                        PopupMenuItem<String>(
+                          value: 'crear',
+                          child: Text('Crear Piloto'),
+                        ),
+                        PopupMenuItem<String>(
+                          value: 'borrar',
+                          child: Text('Borrar Pilotos'),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: user != null ? () => updatePilotName(user.uid) : null,
+                child: Text('Guardar Nombre'),
+              ),
+              SizedBox(height: 20),
+
+              // Sección para cambiar tema (oscuro/claro) y paleta de colores
+              Consumer<ThemeProvider>(
+                builder: (context, themeProvider, child) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Modo Oscuro / Claro", style: TextStyle(fontSize: 16)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(themeProvider.isDarkMode ? "Oscuro" : "Claro"),
+                          Switch(
+                            value: themeProvider.isDarkMode,
+                            onChanged: (value) async {
+                              themeProvider.setDarkMode(value);
+                              if (user != null) {
+                                await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(user.uid)
+                                    .update({'darkMode': value});
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 20),
+                      Text("Selecciona la paleta de colores:",
+                          style: TextStyle(fontSize: 16)),
+                      SizedBox(
+                        height: 80,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: ColorPalette.values.map((palette) {
+                            return GestureDetector(
+                              onTap: () async {
+                                themeProvider.setPalette(palette);
+                                if (user != null) {
+                                  await FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(user.uid)
+                                      .update({
+                                    'palette': palette.toString().split('.').last,
+                                  });
+                                }
+                              },
+                              child: Container(
+                                margin: EdgeInsets.all(8.0),
+                                width: 60,
+                                decoration: BoxDecoration(
+                                  color: themeProvider.getSampleColorForPalette(palette),
+                                  border: themeProvider.palette == palette
+                                      ? Border.all(width: 3, color: Colors.white)
+                                      : null,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              SizedBox(height: 20),
+
+              // ---------- SECCIÓN DE ADMIN: EDITAR TIEMPOS DE SESIÓN ----------
+              if (isAdmin) _buildAdminSessionPilotTimesSection(),
+            ],
+          ),
         ),
-
-        SizedBox(height: 20),
-
-        // ---------- SECCIÓN DE ADMIN: EDITAR TIEMPOS DE SESIÓN ----------
-        if (isAdmin) _buildAdminSessionPilotTimesSection(),
-      ],
-    ),
-  ),
-),
-
+      ),
     );
   }
 }

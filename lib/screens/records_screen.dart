@@ -75,6 +75,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
                     final dateStr =
                         "${sessionDate.year}-${sessionDate.month.toString().padLeft(2, '0')}-${sessionDate.day.toString().padLeft(2, '0')}";
                     final location = data['location'] ?? 'Ubicación desconocida';
+                    // Se agrega la distancia (en metros)
+                    final int distance = data['distance'] ?? 0;
                     final List<dynamic> pilots = data['pilots'] ?? [];
 
                     final filteredPilots = isAdmin
@@ -92,8 +94,9 @@ class _RecordsScreenState extends State<RecordsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Título que muestra la ubicación y la distancia
                             Text(
-                              location,
+                              "$location - ${distance}m",
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,

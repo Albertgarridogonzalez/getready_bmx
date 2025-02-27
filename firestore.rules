@@ -8,6 +8,15 @@ service cloud.firestore {
       allow write: if request.auth != null && isAdmin(request.auth.uid);
     }
 
+		// Permitir lectura a todos
+    match /news/{docId} {
+ 		 	// Permitir lectura a cualquiera (incluso sin iniciar sesión).
+  		allow read: if true;
+
+  		// Permitir escritura únicamente a usuarios autenticados que sean admin.
+  		allow write: if request.auth != null && isAdmin(request.auth.uid);
+		}
+    
     match /sessions/{session} {
       allow read;
       allow write: if request.auth != null;

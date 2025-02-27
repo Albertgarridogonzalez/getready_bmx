@@ -1,12 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:getready_bmx/providers/theme_provider.dart';
+import 'package:getready_bmx/providers/auth_provider.dart';
 
 class BottomNav extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
 
   const BottomNav({required this.currentIndex, required this.onTap});
+
+  // Función para manejar el tap con comprobación de autenticación.
+  void handleTap(BuildContext context, int index) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    if (!authProvider.isAuthenticated) {
+      // Redirige a la pantalla de login si no hay usuario autenticado.
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      return;
+    }
+    onTap(index);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +34,7 @@ class BottomNav extends StatelessWidget {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(10.0),
-                onTap: () => onTap(1),
+                onTap: () => handleTap(context, 1),
                 child: Container(
                   height: 56.0,
                   alignment: Alignment.center,
@@ -36,7 +48,7 @@ class BottomNav extends StatelessWidget {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(10.0),
-                onTap: () => onTap(2),
+                onTap: () => handleTap(context, 2),
                 child: Container(
                   height: 56.0,
                   alignment: Alignment.center,
@@ -51,7 +63,7 @@ class BottomNav extends StatelessWidget {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(10.0),
-                onTap: () => onTap(3),
+                onTap: () => handleTap(context, 3),
                 child: Container(
                   height: 56.0,
                   alignment: Alignment.center,
@@ -65,7 +77,7 @@ class BottomNav extends StatelessWidget {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(10.0),
-                onTap: () => onTap(4),
+                onTap: () => handleTap(context, 4),
                 child: Container(
                   height: 56.0,
                   alignment: Alignment.center,
