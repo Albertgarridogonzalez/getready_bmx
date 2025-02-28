@@ -146,8 +146,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
                         }
 
                         return Card(
-                          margin: EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
+                          margin:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           child: Padding(
                             padding: const EdgeInsets.all(12.0),
                             child: Column(
@@ -164,8 +164,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
                                 SizedBox(height: 4),
                                 Text(
                                   'Fecha: $dateStr',
-                                  style:
-                                      TextStyle(color: Colors.grey[700]),
+                                  style: TextStyle(color: Colors.grey[700]),
                                 ),
                                 Divider(),
                                 // Lista de pilotos
@@ -193,8 +192,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
                                         style: TextStyle(
                                             fontWeight: FontWeight.w600),
                                       ),
-                                      subtitle:
-                                          Text('Tiempos: $timesStr'),
+                                      subtitle: Text('Tiempos: $timesStr'),
                                     );
                                   }).toList(),
                                 ),
@@ -216,23 +214,25 @@ class _RecordsScreenState extends State<RecordsScreen> {
                                   StreamBuilder<QuerySnapshot>(
                                     stream: FirebaseFirestore.instance
                                         .collection('sessionNotes')
-                                        .where('sessionId',
-                                            isEqualTo: doc.id)
-                                        .where('userId',
-                                            isEqualTo: user!.uid)
-                                        .orderBy('timestamp', descending: true)
+                                        .where('sessionId', isEqualTo: doc.id)
+                                        .where('userId', isEqualTo: user!.uid)
                                         .snapshots(),
                                     builder: (context, noteSnapshot) {
                                       if (noteSnapshot.connectionState ==
                                           ConnectionState.waiting) {
-                                        return SizedBox.shrink();
+                                        return CircularProgressIndicator();
                                       }
                                       if (!noteSnapshot.hasData ||
                                           noteSnapshot.data!.docs.isEmpty) {
-                                        return Text('Sin observaciones.');
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 8.0),
+                                          child: Text('Sin observaciones.',
+                                              style: TextStyle(
+                                                  color: Colors.grey)),
+                                        );
                                       }
-                                      final notesDocs =
-                                          noteSnapshot.data!.docs;
+                                      final notesDocs = noteSnapshot.data!.docs;
                                       return Column(
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
@@ -240,16 +240,59 @@ class _RecordsScreenState extends State<RecordsScreen> {
                                           final noteData = noteDoc.data()
                                               as Map<String, dynamic>;
                                           final noteText =
-                                              noteData['observations'] ?? '';
+                                              noteData['observations'] ??
+                                                  'Sin texto';
+                                          final noteId = noteDoc.id;
                                           final Timestamp? ts =
                                               noteData['timestamp'];
-                                          final dateStr = ts != null
-                                              ? ts.toDate().toString()
-                                              : '';
-                                          return ListTile(
-                                            leading: Icon(Icons.note),
-                                            title: Text(noteText),
-                                            subtitle: Text(dateStr),
+                                          final String dateStr = ts != null
+                                              ? "${ts.toDate().day}/${ts.toDate().month}/${ts.toDate().year} ${ts.toDate().hour}:${ts.toDate().minute}"
+                                              : 'Fecha desconocida';
+
+                                          return Card(
+                                            margin: EdgeInsets.symmetric(
+                                                vertical: 4.0),
+                                            color: Theme.of(context)
+                                                        .brightness ==
+                                                    Brightness.dark
+                                                ? Colors.grey[
+                                                    800] // Gris oscuro en modo oscuro
+                                                : Colors.grey[
+                                                    200], // Gris claro en modo claro
+                                            child: ListTile(
+                                              leading: Icon(
+                                                Icons.note,
+                                                color: Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark
+                                                    ? Colors
+                                                        .white // Ícono blanco en modo oscuro
+                                                    : Colors
+                                                        .black, // Ícono negro en modo claro
+                                              ),
+                                              title: Text(
+                                                noteText,
+                                                style: TextStyle(fontSize: 14),
+                                              ),
+                                              subtitle: Text("Añadido el $dateStr"),
+                                              trailing: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  IconButton(
+                                                    icon: Icon(Icons.edit, color: Colors.blue),
+                                                    onPressed: () {
+                                                      _showEditObservationPopup(context, noteId, noteText);
+                                                    },
+                                                  ),
+                                                  IconButton(
+                                                    icon: Icon(Icons.delete, color: Colors.red),
+                                                    onPressed: () {
+                                                      _deleteObservation(context, noteId);
+                                                    },
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           );
                                         }).toList(),
                                       );
@@ -273,7 +316,61 @@ class _RecordsScreenState extends State<RecordsScreen> {
   }
 }
 
-void _showAddObservationPopup(BuildContext context, String sessionId, String userId) {
+// Mostrar popup para editar una observación existente
+void _showEditObservationPopup(BuildContext context, String noteId, String currentText) {
+  final TextEditingController obsController = TextEditingController(text: currentText);
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text('Editar Observación'),
+        content: TextField(controller: obsController, maxLines: 3, decoration: InputDecoration(hintText: 'Edita tu nota...')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              if (obsController.text.trim().isNotEmpty) {
+                await FirebaseFirestore.instance.collection('sessionNotes').doc(noteId).update({
+                  'observations': obsController.text.trim(),
+                  'timestamp': FieldValue.serverTimestamp(),
+                });
+              }
+              Navigator.pop(context);
+            },
+            child: Text('Guardar Cambios'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+// Eliminar una observación con confirmación
+void _deleteObservation(BuildContext context, String noteId) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text('Eliminar Observación'),
+        content: Text('¿Estás seguro de que quieres eliminar esta observación?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancelar')),
+          TextButton(
+            onPressed: () async {
+              await FirebaseFirestore.instance.collection('sessionNotes').doc(noteId).delete();
+              Navigator.pop(context);
+            },
+            child: Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+void _showAddObservationPopup(
+    BuildContext context, String sessionId, String userId) {
   final TextEditingController obsController = TextEditingController();
 
   showDialog(
@@ -295,7 +392,9 @@ void _showAddObservationPopup(BuildContext context, String sessionId, String use
             onPressed: () async {
               final noteText = obsController.text.trim();
               if (noteText.isNotEmpty) {
-                await FirebaseFirestore.instance.collection('sessionNotes').add({
+                await FirebaseFirestore.instance
+                    .collection('sessionNotes')
+                    .add({
                   'sessionId': sessionId,
                   'userId': userId,
                   'observations': noteText,
