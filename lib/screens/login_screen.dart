@@ -11,7 +11,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController pilotController = TextEditingController();
+  List<TextEditingController> pilotControllers = [TextEditingController()];
+  
   bool isRegistering = false;
+  bool isTrainer = false; // Nuevo: para el checkbox
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
               height: constraints.maxHeight,
               child: Column(
                 children: [
-                  // Encabezado con imagen (puedes ajustar altura, opacidad, etc.)
+                  // Encabezado con imagen
                   Container(
                     width: double.infinity,
                     height: constraints.maxHeight * 0.35,
@@ -56,6 +59,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           SizedBox(height: 20),
+
+                          // Email
                           TextField(
                             controller: emailController,
                             decoration: InputDecoration(
@@ -64,6 +69,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           SizedBox(height: 12),
+
+                          // Contraseña
                           TextField(
                             controller: passwordController,
                             decoration: InputDecoration(
@@ -73,7 +80,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             obscureText: true,
                           ),
                           SizedBox(height: 12),
-                          if (isRegistering)
+
+                          // Solo mostramos la parte del piloto si está registrando y NO es entrenador
+                          if (isRegistering && !isTrainer)
                             TextField(
                               controller: pilotController,
                               decoration: InputDecoration(
@@ -81,45 +90,92 @@ class _LoginScreenState extends State<LoginScreen> {
                                 border: OutlineInputBorder(),
                               ),
                             ),
+                          SizedBox(height: 12),
+
+                          // Checkbox: ¿Es Entrenador?
+                          if (isRegistering)
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: isTrainer,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      isTrainer = value ?? false;
+                                      // Si se marca, vaciamos el piloto y lo deshabilitamos
+                                      if (isTrainer) {
+                                        pilotController.clear();
+                                      }
+                                    });
+                                  },
+                                ),
+                                Text("¿Es Entrenador?")
+                              ],
+                            ),
                           SizedBox(height: 20),
+
+                          // Botón principal (Registrar o Iniciar Sesión)
                           ElevatedButton(
                             onPressed: () async {
+                              List<String> pilots = [];
+                              
+                              if (isRegistering) {
+                                // Solo tomamos pilotos si NO es entrenador
+                                if (!isTrainer) {
+                                  pilots = pilotControllers
+                                      .map((c) => c.text.trim())
+                                      .where((text) => text.isNotEmpty)
+                                      .toList();
+
+                                  String singlePilot = pilotController.text.trim();
+                                  if (singlePilot.isNotEmpty) {
+                                    pilots.add(singlePilot);
+                                  }
+
+                                  if (pilots.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text("Debes agregar al menos un piloto o indicar un nombre")),
+                                    );
+                                    return;
+                                  }
+                                }
+                              }
+
                               bool result;
                               if (isRegistering) {
-                                // Intenta registrar
+                                // Aquí pasamos el role según sea entrenador o usuario normal
+                                final roleToAssign = isTrainer ? 'trainer' : 'user';
+
                                 result = await authProvider.registerWithEmail(
                                   context,
                                   emailController.text.trim(),
                                   passwordController.text.trim(),
-                                  pilotController.text.trim(),
+                                  pilots, // Pilotos (vacío si es trainer)
+                                  roleToAssign, // Se lo pasamos para que lo guarde en Firestore
                                 );
                               } else {
-                                // Intenta iniciar sesión
+                                // Login normal
                                 result = await authProvider.signInWithEmail(
                                   context,
                                   emailController.text.trim(),
                                   passwordController.text.trim(),
                                 );
                               }
-                              
-                              // Navega solo si result == true (éxito)
+
                               if (result == true) {
-                                Navigator.of(context)
-                                    .pushReplacementNamed('/home');
+                                Navigator.of(context).pushReplacementNamed('/home');
                               }
                             },
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: Size(double.infinity, 48),
-                            ),
-                            child: Text(
-                              isRegistering ? 'Registrar' : 'Iniciar sesión',
-                              style: TextStyle(fontSize: 16),
-                            ),
+                            child: Text(isRegistering ? 'Registrar' : 'Iniciar sesión'),
                           ),
+
                           TextButton(
                             onPressed: () {
                               setState(() {
                                 isRegistering = !isRegistering;
+                                // Si cambiamos a registro, desmarcamos isTrainer
+                                if (!isRegistering) {
+                                  isTrainer = false;
+                                }
                               });
                             },
                             child: Text(

@@ -9,7 +9,8 @@ class AuthService {
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  Future<bool> signInWithEmail(BuildContext context, String email, String password) async {
+  Future<bool> signInWithEmail(
+      BuildContext context, String email, String password) async {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
       return true; // Éxito
@@ -19,24 +20,26 @@ class AuthService {
     }
   }
 
-
-   Future<bool> registerWithEmail(
+  Future<bool> registerWithEmail(
     BuildContext context,
     String email,
     String password,
-    String pilotName,
+    List<String> pilots,
+    String role,
   ) async {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      // Se guarda el usuario en Firestore
+
+      // Guarda en Firestore con el rol indicado
       await _db.collection('users').doc(result.user!.uid).set({
         'email': email,
-        'pilotName': pilotName,
-        'role': 'user',
+        'pilots': pilots,
+        'role': role, // Puede ser 'trainer' o 'user'
       });
+
       return true;
     } on FirebaseAuthException catch (e) {
       _showErrorSnackbar(context, _getErrorMessage(e.code));

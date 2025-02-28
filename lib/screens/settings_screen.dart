@@ -12,14 +12,16 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final TextEditingController pilotNameController = TextEditingController();
+  // Antes usabas pilotNameController, ahora usaremos una lista de pilotos y controladores
+  List<Map<String, dynamic>> _pilots = [];
+  List<TextEditingController> _pilotControllers = [];
 
   // Controladores para el popup de “Subir Publicación”
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _imageUrlController = TextEditingController();
 
-  // Controlador para el popup de “Crear Piloto”
+  // Controlador para el popup de “Crear Piloto” (ya no se usará para crear, sino que agregaremos en la lista)
   final TextEditingController _newPilotController = TextEditingController();
 
   // ---------- Variables para admin (sesiones/pilotos/tiempos) ----------
@@ -36,67 +38,105 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadUserSettings() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;
-    if (user != null) {
-      DocumentSnapshot doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-      if (doc.exists && doc.data() != null) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        setState(() {
-          pilotNameController.text = data['pilotName'] ?? '';
-        });
+    if (user == null) {
+      print('No hay usuario autenticado');
+      return;
+    }
+    DocumentSnapshot doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    if (doc.exists && doc.data() != null) {
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
-        bool darkMode = data['darkMode'] ?? true;
-        String paletteStr = data['palette'] ?? 'blue';
-        ColorPalette palette;
-        switch (paletteStr) {
-          case 'red':
-            palette = ColorPalette.red;
-            break;
-          case 'green':
-            palette = ColorPalette.green;
-            break;
-          case 'purple':
-            palette = ColorPalette.purple;
-            break;
-          case 'orange':
-            palette = ColorPalette.orange;
-            break;
-          case 'blue':
-          default:
-            palette = ColorPalette.blue;
-            break;
-        }
-
-        Provider.of<ThemeProvider>(context, listen: false)
-            .setDarkMode(darkMode, save: false);
-        Provider.of<ThemeProvider>(context, listen: false)
-            .setPalette(palette, save: false);
+      // Manejar el campo "pilots" que puede ser un String o una Lista de Map.
+      dynamic pilotsData = data['pilots'];
+      List<Map<String, dynamic>> pilotsList = [];
+      if (pilotsData is String) {
+        // Si es un String, lo convertimos en una lista con un solo piloto.
+        pilotsList.add({'id': 'default', 'name': pilotsData});
+      } else if (pilotsData is List) {
+        pilotsList = pilotsData.map<Map<String, dynamic>>((e) {
+          if (e is Map<String, dynamic>) {
+            return e;
+          } else if (e is String) {
+            // Si algún elemento es String, lo tratamos como nombre.
+            return {'id': 'default', 'name': e};
+          }
+          return {};
+        }).toList();
       }
+
+      setState(() {
+        _pilots = pilotsList;
+        _pilotControllers = _pilots.map((pilot) {
+          return TextEditingController(text: pilot['name']?.toString() ?? '');
+        }).toList();
+      });
+
+      // Carga de opciones de tema (no relacionado con los pilotos)
+      bool darkMode = data['darkMode'] ?? true;
+      String paletteStr = data['palette'] ?? 'blue';
+      ColorPalette palette;
+      switch (paletteStr) {
+        case 'red':
+          palette = ColorPalette.red;
+          break;
+        case 'green':
+          palette = ColorPalette.green;
+          break;
+        case 'purple':
+          palette = ColorPalette.purple;
+          break;
+        case 'orange':
+          palette = ColorPalette.orange;
+          break;
+        case 'blue':
+        default:
+          palette = ColorPalette.blue;
+          break;
+      }
+      Provider.of<ThemeProvider>(context, listen: false)
+          .setDarkMode(darkMode, save: false);
+      Provider.of<ThemeProvider>(context, listen: false)
+          .setPalette(palette, save: false);
     }
   }
 
   // -----------------------------------------------------------------------
-  // Función para actualizar el nombre del piloto
+  // Función para actualizar la lista de pilotos del usuario
   // -----------------------------------------------------------------------
-  Future<void> updatePilotName(String userId) async {
+  Future<void> updatePilots(String userId) async {
+    List<Map<String, dynamic>> updatedPilots = [];
+    for (int i = 0; i < _pilotControllers.length; i++) {
+      final pilotName = _pilotControllers[i].text.trim();
+      // Puedes decidir si ignorar pilotos con nombre vacío
+      if (pilotName.isNotEmpty) {
+        updatedPilots.add({
+          'id': _pilots[i]['id'] ??
+              DateTime.now().millisecondsSinceEpoch.toString(),
+          'name': pilotName,
+        });
+      }
+    }
     await FirebaseFirestore.instance.collection('users').doc(userId).update({
-      'pilotName': pilotNameController.text,
+      'pilots': updatedPilots,
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Nombre del piloto actualizado'),
+        content: Text('Pilotos actualizados'),
         backgroundColor: Colors.green,
       ),
     );
   }
 
   // -----------------------------------------------------------------------
-  // Funciones para eliminar y editar tiempos en sesiones
+  // Funciones para eliminar y editar tiempos en sesiones (sin cambios)
   // -----------------------------------------------------------------------
-  Future<void> _deleteTime(String sessionId, String pilotId, int timeIndex) async {
-    final sessionRef = FirebaseFirestore.instance.collection('sessions').doc(sessionId);
+  Future<void> _deleteTime(
+      String sessionId, String pilotId, int timeIndex) async {
+    final sessionRef =
+        FirebaseFirestore.instance.collection('sessions').doc(sessionId);
     final sessionDoc = await sessionRef.get();
     if (!sessionDoc.exists) return;
 
@@ -118,8 +158,164 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await sessionRef.update({'pilots': pilots});
   }
 
-  Future<void> _editTime(String sessionId, String pilotId, int timeIndex, int newTime) async {
-    final sessionRef = FirebaseFirestore.instance.collection('sessions').doc(sessionId);
+  void _showAssignPilotsToTrainerPopup() async {
+  // 1. Obtener la lista de trainers
+  final trainerSnapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .where('role', isEqualTo: 'trainer')
+      .get();
+
+  // 2. Si no hay entrenadores, mostramos un aviso
+  if (trainerSnapshot.docs.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('No hay entrenadores registrados.')),
+    );
+    return;
+  }
+
+  // 3. Obtener la lista de pilotos (role = user) y armar un array con sus pilots
+  final usersSnapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .where('role', isEqualTo: 'user')
+      .get();
+
+  List<Map<String, dynamic>> allPilots = [];
+  for (var doc in usersSnapshot.docs) {
+    final data = doc.data();
+    final List<dynamic> pilotsArr = data['pilots'] ?? [];
+    // El doc.id corresponde al "userId", pero cada pilot tiene su propio "id"
+    // Podrías componer un ID tipo "userId_pilotId" o similar
+    // Para simplicidad, guardo la info en un map
+    for (var p in pilotsArr) {
+      if (p is Map<String, dynamic>) {
+        // p['name'] y p['id']
+        allPilots.add({
+          'userId': doc.id,
+          'pilotId': p['id'],
+          'pilotName': p['name'] ?? 'Sin nombre',
+        });
+      } else if (p is String) {
+        // Si un pilot es string, lo adaptamos
+        allPilots.add({
+          'userId': doc.id,
+          'pilotId': 'default',
+          'pilotName': p,
+        });
+      }
+    }
+  }
+
+  // Variables locales para la selección en el popup
+  String? selectedTrainerId;
+  // Pilotos seleccionados (vamos a guardar un set de IDs compuestos)
+  Set<String> selectedPilotIds = {};
+
+  showDialog(
+    context: context,
+    builder: (ctx) {
+      return AlertDialog(
+        title: Text('Asignar Pilotos a Trainer'),
+        content: StatefulBuilder(
+          builder: (context, setStateSB) {
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Dropdown de entrenadores
+                  DropdownButton<String>(
+                    value: selectedTrainerId,
+                    hint: Text("Seleccionar Entrenador"),
+                    isExpanded: true,
+                    items: trainerSnapshot.docs.map((trainerDoc) {
+                      final tData = trainerDoc.data();
+                      final tEmail = tData['email'] ?? trainerDoc.id;
+                      return DropdownMenuItem<String>(
+                        value: trainerDoc.id,
+                        child: Text(tEmail),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      setStateSB(() {
+                        selectedTrainerId = val;
+                      });
+                    },
+                  ),
+                  SizedBox(height: 16),
+
+                  // Lista de pilotos en Cards seleccionables
+                  ...allPilots.map((pilot) {
+                    // compongo un ID único
+                    final combinedId = "${pilot['userId']}_${pilot['pilotId']}";
+                    final pName = pilot['pilotName'] ?? '---';
+                    final bool isSelected = selectedPilotIds.contains(combinedId);
+
+                    return InkWell(
+                      onTap: () {
+                        setStateSB(() {
+                          if (isSelected) {
+                            selectedPilotIds.remove(combinedId);
+                          } else {
+                            selectedPilotIds.add(combinedId);
+                          }
+                        });
+                      },
+                      child: Card(
+                        color: isSelected ? const Color.fromARGB(255, 54, 133, 58)
+                            : const Color.fromARGB(255, 121, 120, 120),
+                        child: Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: ListTile(
+                            title: Text(pName),
+                            subtitle: Text("ID: $combinedId"),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ],
+              ),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (selectedTrainerId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Selecciona un entrenador')),
+                );
+                return;
+              }
+              // Guardamos la lista en un campo "assignedPilots" en el doc del entrenador
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(selectedTrainerId)
+                  .update({
+                'assignedPilots': selectedPilotIds.toList(),
+              });
+
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Pilotos asignados correctamente')),
+              );
+            },
+            child: Text('Guardar'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+
+  Future<void> _editTime(
+      String sessionId, String pilotId, int timeIndex, int newTime) async {
+    final sessionRef =
+        FirebaseFirestore.instance.collection('sessions').doc(sessionId);
     final sessionDoc = await sessionRef.get();
     if (!sessionDoc.exists) return;
 
@@ -141,7 +337,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await sessionRef.update({'pilots': pilots});
   }
 
-  void _showEditTimeDialog(String sessionId, String pilotId, int timeIndex, int currentTime) {
+  void _showEditTimeDialog(
+      String sessionId, String pilotId, int timeIndex, int currentTime) {
     _editTimeController.text = currentTime.toString();
     showDialog(
       context: context,
@@ -224,14 +421,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         ),
         SizedBox(height: 16),
-
-        // Dropdown de piloto (dentro de la sesión seleccionada)
         Text(
           "Seleccionar Piloto:",
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        if (_selectedSessionId == null)
-          Text("Primero selecciona una sesión"),
+        if (_selectedSessionId == null) Text("Primero selecciona una sesión"),
         if (_selectedSessionId != null)
           FutureBuilder<DocumentSnapshot>(
             future: FirebaseFirestore.instance
@@ -275,8 +469,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
         SizedBox(height: 16),
-
-        // Lista de tiempos del piloto seleccionado
         Text(
           "Tiempos del Piloto:",
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -353,10 +545,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Popup para Subir Publicación (nueva “noticia”)
+  // Popup para Subir Publicación (nueva “noticia”) (sin cambios)
   // -----------------------------------------------------------------------
   void _showPublicationPopup() {
-    // Limpiamos los campos antes de abrir
     _titleController.clear();
     _contentController.clear();
     _imageUrlController.clear();
@@ -393,7 +584,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                // Subimos a Firestore en la colección "news"
                 await FirebaseFirestore.instance.collection('news').add({
                   'title': _titleController.text,
                   'content': _contentController.text,
@@ -411,7 +601,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Popup para Crear Piloto (solo solicita el nombre)
+  // (Opcional) Popup para Crear Piloto – ahora puedes integrarlo o eliminarlo,
+  // ya que la gestión se hace en la lista de TextFields.
   // -----------------------------------------------------------------------
   void _showCreatePilotPopup() {
     _newPilotController.clear();
@@ -433,13 +624,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: () async {
                 final pilotName = _newPilotController.text.trim();
                 if (pilotName.isNotEmpty) {
-                  // Se crea un documento en 'users' con email vacío, role "user" y pilotName
+                  // Genera un email aleatorio para este piloto
+                  String randomEmail =
+                      "pilot_${DateTime.now().millisecondsSinceEpoch}@example.com";
+                  // Genera un id para el piloto
+                  String newId =
+                      DateTime.now().millisecondsSinceEpoch.toString();
                   await FirebaseFirestore.instance.collection('users').add({
-                    'email': '',
+                    'email': randomEmail,
                     'role': 'user',
-                    'pilotName': pilotName,
+                    'pilots': [
+                      {
+                        'id': newId,
+                        'name': pilotName,
+                      }
+                    ],
                   });
-                  
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -458,7 +658,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Popup para borrar pilotos (lista de cards de pilotos)
+  // Popup para borrar pilotos (para admin, se podría adaptar también)
   // -----------------------------------------------------------------------
   void _showDeletePilotsPopup() {
     showDialog(
@@ -478,29 +678,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   return Center(child: CircularProgressIndicator());
                 }
                 final docs = snapshot.data!.docs;
-                if (docs.isEmpty) {
+                // Recorremos cada documento y extraemos los pilotos
+                List<Map<String, dynamic>> pilotEntries = [];
+                for (var doc in docs) {
+                  Map<String, dynamic> data =
+                      doc.data() as Map<String, dynamic>;
+                  List<dynamic> pilots = data['pilots'] ?? [];
+                  for (var pilot in pilots) {
+                    if (pilot is Map<String, dynamic>) {
+                      pilotEntries.add({
+                        'userId': doc.id,
+                        'pilotId': pilot['id'],
+                        'pilotName': pilot['name'],
+                      });
+                    }
+                  }
+                }
+                if (pilotEntries.isEmpty) {
                   return Text("No hay pilotos para borrar.");
                 }
                 return ListView.builder(
                   shrinkWrap: true,
-                  itemCount: docs.length,
+                  itemCount: pilotEntries.length,
                   itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    final data = doc.data() as Map<String, dynamic>;
-                    final pilotName = data['pilotName'] ?? 'Sin nombre';
+                    final entry = pilotEntries[index];
+                    final pilotName = entry['pilotName'] ?? 'Sin nombre';
                     return Card(
                       child: ListTile(
                         title: Text(pilotName),
                         trailing: IconButton(
                           icon: Icon(Icons.delete, color: Colors.red),
                           onPressed: () {
-                            // Confirmar borrado
                             showDialog(
                               context: context,
                               builder: (context) {
                                 return AlertDialog(
                                   title: Text('Confirmar borrado'),
-                                  content: Text('¿Estás seguro de borrar a $pilotName?'),
+                                  content: Text(
+                                      '¿Estás seguro de borrar a $pilotName?'),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.pop(context),
@@ -508,11 +723,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     ),
                                     TextButton(
                                       onPressed: () async {
-                                        Navigator.pop(context); // Cierra confirmación
-                                        Navigator.pop(context); // Cierra popup de borrar pilotos
-                                        await _deletePilot(doc.id);
+                                        Navigator.pop(
+                                            context); // cierra confirmación
+                                        Navigator.pop(
+                                            context); // cierra popup principal
+                                        await _deletePilotFromUser(
+                                          entry['userId'],
+                                          entry['pilotId'],
+                                        );
                                       },
-                                      child: Text('Borrar', style: TextStyle(color: Colors.red)),
+                                      child: Text('Borrar',
+                                          style: TextStyle(color: Colors.red)),
                                     ),
                                   ],
                                 );
@@ -538,19 +759,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Función para borrar piloto y limpiar datos en sesiones
+  Future<void> _deletePilotFromUser(String userId, String pilotId) async {
+    DocumentReference userRef =
+        FirebaseFirestore.instance.collection('users').doc(userId);
+    DocumentSnapshot userDoc = await userRef.get();
+    if (!userDoc.exists) return;
+    Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
+    List<dynamic> pilots = data['pilots'] ?? [];
+    List<dynamic> updatedPilots = pilots.where((p) {
+      if (p is Map<String, dynamic>) {
+        return p['id'] != pilotId;
+      }
+      return true;
+    }).toList();
+    await userRef.update({'pilots': updatedPilots});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text('Piloto borrado exitosamente'),
+          backgroundColor: Colors.green),
+    );
+  }
+
+  // Función para borrar piloto y limpiar datos en sesiones (sin cambios)
   Future<void> _deletePilot(String pilotId) async {
-    // Borrar usuario en la colección 'users'
     await FirebaseFirestore.instance.collection('users').doc(pilotId).delete();
 
-    // Buscar y actualizar sesiones en las que aparezca este piloto
-    QuerySnapshot sessionsSnapshot = await FirebaseFirestore.instance.collection('sessions').get();
+    QuerySnapshot sessionsSnapshot =
+        await FirebaseFirestore.instance.collection('sessions').get();
     WriteBatch batch = FirebaseFirestore.instance.batch();
     for (var sessionDoc in sessionsSnapshot.docs) {
-      Map<String, dynamic> sessionData = sessionDoc.data() as Map<String, dynamic>;
+      Map<String, dynamic> sessionData =
+          sessionDoc.data() as Map<String, dynamic>;
       List<dynamic> pilots = sessionData['pilots'] ?? [];
-      // Filtrar pilotos removiendo aquél con id == pilotId
-      List<dynamic> updatedPilots = pilots.where((p) => (p['id'] as String) != pilotId).toList();
+      List<dynamic> updatedPilots =
+          pilots.where((p) => (p['id'] as String) != pilotId).toList();
       if (updatedPilots.length != pilots.length) {
         batch.update(sessionDoc.reference, {'pilots': updatedPilots});
       }
@@ -558,7 +800,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await batch.commit();
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Piloto borrado exitosamente'), backgroundColor: Colors.green),
+      SnackBar(
+          content: Text('Piloto borrado exitosamente'),
+          backgroundColor: Colors.green),
     );
   }
 
@@ -575,14 +819,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: EdgeInsets.all(16.0),
           child: Column(
             children: [
-              // --- Fila superior con nombre, botón de cerrar sesión y menú de ajustes para admin ---
+              // --- Fila superior con lista de pilotos, botón de cerrar sesión y menú de ajustes para admin ---
               Row(
                 children: [
-                  // Campo para el nombre del piloto
+                  // Aquí mostramos una columna con un TextField para cada piloto
                   Expanded(
-                    child: TextField(
-                      controller: pilotNameController,
-                      decoration: InputDecoration(labelText: 'Nombre del piloto'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ..._pilotControllers.asMap().entries.map((entry) {
+                          int index = entry.key;
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: entry.value,
+                                  decoration: InputDecoration(
+                                    labelText: 'Piloto ${index + 1}',
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.delete),
+                                onPressed: () {
+                                  setState(() {
+                                    _pilotControllers.removeAt(index);
+                                    _pilots.removeAt(index);
+                                  });
+                                },
+                              )
+                            ],
+                          );
+                        }).toList(),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              String newId = DateTime.now()
+                                  .millisecondsSinceEpoch
+                                  .toString();
+                              _pilots.add({'id': newId, 'name': ''});
+                              _pilotControllers.add(TextEditingController());
+                            });
+                          },
+                          child: Text("Añadir Piloto"),
+                        ),
+                      ],
                     ),
                   ),
                   SizedBox(width: 20),
@@ -595,13 +876,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     },
                     child: Text('Cerrar Sesión'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    style:
+                        ElevatedButton.styleFrom(backgroundColor: Colors.red),
                   ),
                   SizedBox(width: 20),
                   if (isAdmin)
-                    // Menú desplegable de ajustes para admin
                     PopupMenuButton<String>(
-                      icon: Icon(Icons.settings, color: const Color.fromARGB(255, 70, 69, 69)),
+                      icon: Icon(Icons.settings,
+                          color: const Color.fromARGB(255, 70, 69, 69)),
                       onSelected: (value) {
                         if (value == 'subir') {
                           _showPublicationPopup();
@@ -609,9 +891,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _showCreatePilotPopup();
                         } else if (value == 'borrar') {
                           _showDeletePilotsPopup();
+                        } else if (value == 'asignar') {
+                          _showAssignPilotsToTrainerPopup();
                         }
                       },
-                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                      itemBuilder: (BuildContext context) =>
+                          <PopupMenuEntry<String>>[
                         PopupMenuItem<String>(
                           value: 'subir',
                           child: Text('Subir Publicación'),
@@ -624,24 +909,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           value: 'borrar',
                           child: Text('Borrar Pilotos'),
                         ),
+                        PopupMenuItem<String>(
+                          value: 'asignar',
+                          child: Text('Asignar Pilotos a Trainer'),
+                        ),
                       ],
                     ),
                 ],
               ),
               SizedBox(height: 10),
+              // Botón para guardar la lista de pilotos (actualiza el documento del usuario)
               ElevatedButton(
-                onPressed: user != null ? () => updatePilotName(user.uid) : null,
-                child: Text('Guardar Nombre'),
+                onPressed: user != null ? () => updatePilots(user.uid) : null,
+                child: Text('Guardar Pilotos'),
               ),
               SizedBox(height: 20),
-
               // Sección para cambiar tema (oscuro/claro) y paleta de colores
               Consumer<ThemeProvider>(
                 builder: (context, themeProvider, child) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Modo Oscuro / Claro", style: TextStyle(fontSize: 16)),
+                      Text("Modo Oscuro / Claro",
+                          style: TextStyle(fontSize: 16)),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -676,7 +966,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       .collection('users')
                                       .doc(user.uid)
                                       .update({
-                                    'palette': palette.toString().split('.').last,
+                                    'palette':
+                                        palette.toString().split('.').last,
                                   });
                                 }
                               },
@@ -684,9 +975,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 margin: EdgeInsets.all(8.0),
                                 width: 60,
                                 decoration: BoxDecoration(
-                                  color: themeProvider.getSampleColorForPalette(palette),
+                                  color: themeProvider
+                                      .getSampleColorForPalette(palette),
                                   border: themeProvider.palette == palette
-                                      ? Border.all(width: 3, color: Colors.white)
+                                      ? Border.all(
+                                          width: 3, color: Colors.white)
                                       : null,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
@@ -700,7 +993,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               SizedBox(height: 20),
-
               // ---------- SECCIÓN DE ADMIN: EDITAR TIEMPOS DE SESIÓN ----------
               if (isAdmin) _buildAdminSessionPilotTimesSection(),
             ],

@@ -1,36 +1,45 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Permitir lectura a todos
+
+    // Reglas para locations
     match /locations/{location} {
       allow read;
       allow write: if request.auth != null && isAdmin(request.auth.uid);
     }
 
-		// Permitir lectura a todos
+    // Reglas para news
     match /news/{docId} {
- 		 	// Permitir lectura a cualquiera (incluso sin iniciar sesión).
-  		allow read: if true;
+      allow read: if true;
+      allow write: if request.auth != null && isAdmin(request.auth.uid);
+    }
 
-  		// Permitir escritura únicamente a usuarios autenticados que sean admin.
-  		allow write: if request.auth != null && isAdmin(request.auth.uid);
-		}
-    
+    // Reglas para sessions
     match /sessions/{session} {
       allow read;
       allow write: if request.auth != null;
     }
 
+    // Reglas para pilots
     match /pilots/{pilot} {
       allow read;
       allow write: if request.auth != null;
     }
 
+    // Reglas para users
     match /users/{userId} {
-      // Permitir lectura y escritura si es el usuario o si es administrador.
       allow read, write: if request.auth != null &&
          (request.auth.uid == userId || isAdmin(request.auth.uid));
+    }
+    
+    // Reglas para sessionNotes (nuevas observaciones de sesión)
+    match /sessionNotes/{noteId} {
+      // Permite crear si el usuario autenticado es el mismo que se envía en el campo userId
+      allow create: if request.auth != null &&
+                    request.auth.uid == request.resource.data.userId;
+      // Permite leer, actualizar y eliminar solo si el documento ya existe y su campo userId coincide con el uid del usuario
+      allow read, update, delete: if request.auth != null &&
+                    request.auth.uid == resource.data.userId;
     }
 
     function isAdmin(uid) {

@@ -23,14 +23,17 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> registerWithEmail(
-    BuildContext context,
-    String email,
-    String password,
-    String pilotName,
-  ) async {
-    bool ok = await _authService.registerWithEmail(context, email, password, pilotName);
-    return ok;
-  }
+  BuildContext context,
+  String email,
+  String password,
+  List<String> pilots, 
+  String role,
+) async {
+  bool ok = await _authService.registerWithEmail(context, email, password, pilots, role);
+  return ok;
+}
+
+
 
   Future<void> signOut() async {
     await _authService.signOut();

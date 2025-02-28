@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:getready_bmx/providers/theme_provider.dart';
 import 'package:getready_bmx/widgets/bottom_nav.dart';
 import 'package:getready_bmx/screens/live_screen.dart';
 import 'package:getready_bmx/screens/records_screen.dart';
@@ -39,15 +41,54 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Obtenemos el provider para usar el color que el usuario eligió
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final baseColor = themeProvider.primaryColor;
+    final darker = darkenColor(baseColor, 0.15);
+    final lighter = lightenColor(baseColor, 0.15);
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('GetReady BMX'),
-            Text(_pageTitles[_selectedIndex]),
-          ],
+        // Texto a la izquierda
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12.0),
+          child: Center(
+            child: Text(
+              "GateReady BMX",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
         ),
+        leadingWidth: 140, // Ajusta el espacio para tu texto a la izquierda
+
+        centerTitle: true,
+        elevation: 0,
+
+        // Título (centrado) con el nombre de la sección actual
+        title: Text(
+          _pageTitles[_selectedIndex],
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        // Aplicamos gradiente en flexibleSpace
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                darker,   // Más oscuro
+              lighter,  // Más claro
+              ],
+            ),
+          ),
+        ),
+        //shape: RoundedRectangleBorder(
+        //  borderRadius: BorderRadius.vertical(
+        //    bottom: Radius.circular(25),
+        //  ),
+        //),
       ),
       body: IndexedStack(
         index: _selectedIndex,
@@ -65,6 +106,19 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+Color lightenColor(Color color, [double amount = .1]) {
+  final hsl = HSLColor.fromColor(color);
+  // Aumentamos la lightness (clamp mantiene el valor entre 0 y 1)
+  final hslLight = hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0));
+  return hslLight.toColor();
+}
+
+Color darkenColor(Color color, [double amount = .1]) {
+  final hsl = HSLColor.fromColor(color);
+  final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
+  return hslDark.toColor();
 }
 
 // ----------------------------------------------------------------------

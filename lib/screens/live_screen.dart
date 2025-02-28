@@ -7,6 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:getready_bmx/providers/auth_provider.dart';
+import 'package:flutter/foundation.dart';
+
 
 /// Convierte milisegundos (int) a un String con segundos y 3 decimales.
 /// Ej: 4590 ms -> "4.590", 34578 ms -> "34.578"
@@ -375,59 +377,63 @@ class _LiveScreenState extends State<LiveScreen> {
   // Dialog para seleccionar pilotos
   // ----------------------------------------------------------------
   void showPilotSelectionPopup() async {
-    if (currentSessionId != null) {
-      DocumentSnapshot sessionDoc = await FirebaseFirestore.instance
-          .collection('sessions')
-          .doc(currentSessionId)
-          .get();
-      List<dynamic> currentPilots =
-          (sessionDoc.data() as Map<String, dynamic>?)?['pilots'] ?? [];
-      selectedPilots = List<Map<String, dynamic>>.from(currentPilots);
-    }
-    Map<String, Map<String, dynamic>> currentPilotsMap = {
-      for (var p in selectedPilots) p['id']: p
-    };
-    var snapshot = await FirebaseFirestore.instance.collection('users').get();
-    List<Map<String, dynamic>> pilots =
-        List<Map<String, dynamic>>.from(selectedPilots);
+  // Si ya hay una sesión, cargamos los pilotos seleccionados previamente
+  if (currentSessionId != null) {
+    DocumentSnapshot sessionDoc = await FirebaseFirestore.instance
+        .collection('sessions')
+        .doc(currentSessionId)
+        .get();
+    List<dynamic> currentPilots =
+        (sessionDoc.data() as Map<String, dynamic>?)?['pilots'] ?? [];
+    selectedPilots = List<Map<String, dynamic>>.from(currentPilots);
+  }
+  // Creamos un mapa para tener los pilotos ya seleccionados (clave = id único)
+  Map<String, Map<String, dynamic>> currentPilotsMap = {
+    for (var p in selectedPilots) p['id']: p
+  };
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text("Seleccionar Pilotos"),
-          content: StatefulBuilder(
-            builder: (context, setStateSB) {
-              return Container(
-                width: double.maxFinite,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: snapshot.docs.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    // Si no existe pilotName, mostrar un nombre genérico
-                    final String name = data['pilotName'] ?? 'Sin nombre';
-                    bool isSelected =
-                        (currentPilotsMap[doc.id]?['active'] ?? false) as bool;
+  // Obtenemos todos los documentos de usuarios
+  var snapshot = await FirebaseFirestore.instance.collection('users').get();
+  // Copia local de los pilotos seleccionados en la sesión actual
+  List<Map<String, dynamic>> pilots = List<Map<String, dynamic>>.from(selectedPilots);
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text("Seleccionar Pilotos"),
+        content: StatefulBuilder(
+          builder: (context, setStateSB) {
+            return Container(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: snapshot.docs.expand((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  // Obtener la lista de pilotos del usuario (ahora es una lista de maps)
+                  final List<dynamic> userPilots = data['pilots'] ?? [];
+                  return userPilots.map((pilotData) {
+                    // pilotData es un Map, extraemos el nombre y el id original
+                    final pilotMap = pilotData as Map<String, dynamic>;
+                    final String pilotName = pilotMap['name']?.toString() ?? 'Sin nombre';
+                    // Creamos un id único combinando el id del usuario y el id del piloto
+                    final String pilotId = "${doc.id}_${pilotMap['id']}";
+                    bool isSelected = currentPilotsMap.containsKey(pilotId);
+
                     return InkWell(
                       onTap: () {
                         setStateSB(() {
-                          if (currentPilotsMap.containsKey(doc.id)) {
-                            int index =
-                                pilots.indexWhere((p) => p['id'] == doc.id);
-                            if (index != -1) {
-                              pilots[index]['active'] =
-                                  !(pilots[index]['active'] ?? false);
-                              currentPilotsMap[doc.id]!['active'] =
-                                  pilots[index]['active'];
-                            }
+                          if (isSelected) {
+                            pilots.removeWhere((p) => p['id'] == pilotId);
+                            currentPilotsMap.remove(pilotId);
                           } else {
                             pilots.add({
-                              'id': doc.id,
-                              'name': name,
+                              'id': pilotId,
+                              'name': pilotName,
                               'times': [],
                               'active': true,
                             });
-                            currentPilotsMap[doc.id] = pilots.last;
+                            currentPilotsMap[pilotId] = pilots.last;
                           }
                         });
                       },
@@ -438,37 +444,38 @@ class _LiveScreenState extends State<LiveScreen> {
                         child: Padding(
                           padding: EdgeInsets.all(8.0),
                           child: ListTile(
-                            title: Text(name),
-                            subtitle:
-                                isSelected ? Text("Esperando tiempo...") : null,
+                            title: Text(pilotName),
+                            subtitle: isSelected ? Text("Esperando tiempo...") : null,
                           ),
                         ),
                       ),
                     );
-                  }).toList(),
-                ),
-              );
+                  }).toList();
+                }).toList(),
+              ),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() {
+                selectedPilots = pilots;
+              });
+              FirebaseFirestore.instance
+                  .collection('sessions')
+                  .doc(currentSessionId)
+                  .update({'pilots': pilots});
+              Navigator.pop(context);
             },
+            child: Text("Iniciar"),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  selectedPilots = pilots;
-                });
-                FirebaseFirestore.instance
-                    .collection('sessions')
-                    .doc(currentSessionId)
-                    .update({'pilots': pilots});
-                Navigator.pop(context);
-              },
-              child: Text("Iniciar"),
-            ),
-          ],
-        );
-      },
-    );
-  }
+        ],
+      );
+    },
+  );
+}
+
 
   // ----------------------------------------------------------------
   // Guarda el tiempo en milisegundos para un piloto en la sesión actual

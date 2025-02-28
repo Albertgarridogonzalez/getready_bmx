@@ -20,8 +20,8 @@ class LeaderboardScreen extends StatelessWidget {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           }
-          
-          // Mapea cada ubicación a la lista de pilotos y a su distancia (en metros)
+
+          // Mapea cada ubicación a la lista de pilotos y su distancia
           Map<String, List<Map<String, dynamic>>> locationToPilots = {};
           Map<String, int> locationToDistance = {};
 
@@ -29,25 +29,26 @@ class LeaderboardScreen extends StatelessWidget {
             for (var doc in snapshot.data!.docs) {
               final data = doc.data() as Map<String, dynamic>;
               final location = data['location'] ?? 'Sin ubicación';
-              // Asumimos que 'distance' viene en metros
               final int distance = data['distance'] ?? 0;
               final List<dynamic> pilots = data['pilots'] ?? [];
 
-              // Si ya se registró la ubicación, nos quedamos con el primero (o podrías promediar, etc.)
               if (!locationToDistance.containsKey(location)) {
                 locationToDistance[location] = distance;
               }
 
               locationToPilots.putIfAbsent(location, () => []);
 
-              for (var pilot in pilots) {
-                final pilotMap = pilot as Map<String, dynamic>;
-                final pilotName = pilotMap['name'] ?? 'Piloto sin nombre';
+              for (var pilotEntry in pilots) {
+                final pilotMap = pilotEntry as Map<String, dynamic>;
+                final String pilotName = pilotMap['name'] ?? 'Piloto sin nombre';
                 final List<dynamic> times = pilotMap['times'] ?? [];
+
+                // Calcular el mejor tiempo del piloto
                 final int bestTimePilot = times.isNotEmpty
                     ? times.map((t) => t as int).reduce((a, b) => a < b ? a : b)
                     : 999999;
-                
+
+                // Agregar piloto a la lista de la ubicación correspondiente
                 locationToPilots[location]!.add({
                   'name': pilotName,
                   'bestTime': bestTimePilot,
