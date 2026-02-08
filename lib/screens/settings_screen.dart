@@ -108,20 +108,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // -----------------------------------------------------------------------
   Future<void> updatePilots(String userId) async {
     List<Map<String, dynamic>> updatedPilots = [];
+
     for (int i = 0; i < _pilotControllers.length; i++) {
       final pilotName = _pilotControllers[i].text.trim();
-      // Puedes decidir si ignorar pilotos con nombre vacío
+      final pilotRfid = _pilots[i]['rfid']?.toString().trim() ?? '';
       if (pilotName.isNotEmpty) {
         updatedPilots.add({
           'id': _pilots[i]['id'] ??
               DateTime.now().millisecondsSinceEpoch.toString(),
           'name': pilotName,
+          'rfid': pilotRfid,
         });
       }
     }
+
+    // 🔹 Guardar los pilotos actualizados en el usuario
     await FirebaseFirestore.instance.collection('users').doc(userId).update({
       'pilots': updatedPilots,
     });
+
+    // 🔹 Crear o actualizar el índice RFID -> userId
+    for (var p in updatedPilots) {
+      if (p['rfid'] != null && p['rfid'].toString().isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('rfidIndex')
+            .doc(p['rfid'])
+            .set({
+          'userId': userId,
+          'pilotName': p['name'],
+        });
+      }
+    }
+
+    // 🔹 Mensaje visual de confirmación
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Pilotos actualizados'),
@@ -159,158 +178,160 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showAssignPilotsToTrainerPopup() async {
-  // 1. Obtener la lista de trainers
-  final trainerSnapshot = await FirebaseFirestore.instance
-      .collection('users')
-      .where('role', isEqualTo: 'trainer')
-      .get();
+    // 1. Obtener la lista de trainers
+    final trainerSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'trainer')
+        .get();
 
-  // 2. Si no hay entrenadores, mostramos un aviso
-  if (trainerSnapshot.docs.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('No hay entrenadores registrados.')),
-    );
-    return;
-  }
+    // 2. Si no hay entrenadores, mostramos un aviso
+    if (trainerSnapshot.docs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No hay entrenadores registrados.')),
+      );
+      return;
+    }
 
-  // 3. Obtener la lista de pilotos (role = user) y armar un array con sus pilots
-  final usersSnapshot = await FirebaseFirestore.instance
-      .collection('users')
-      .where('role', isEqualTo: 'user')
-      .get();
+    // 3. Obtener la lista de pilotos (role = user) y armar un array con sus pilots
+    final usersSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'user')
+        .get();
 
-  List<Map<String, dynamic>> allPilots = [];
-  for (var doc in usersSnapshot.docs) {
-    final data = doc.data();
-    final List<dynamic> pilotsArr = data['pilots'] ?? [];
-    // El doc.id corresponde al "userId", pero cada pilot tiene su propio "id"
-    // Podrías componer un ID tipo "userId_pilotId" o similar
-    // Para simplicidad, guardo la info en un map
-    for (var p in pilotsArr) {
-      if (p is Map<String, dynamic>) {
-        // p['name'] y p['id']
-        allPilots.add({
-          'userId': doc.id,
-          'pilotId': p['id'],
-          'pilotName': p['name'] ?? 'Sin nombre',
-        });
-      } else if (p is String) {
-        // Si un pilot es string, lo adaptamos
-        allPilots.add({
-          'userId': doc.id,
-          'pilotId': 'default',
-          'pilotName': p,
-        });
+    List<Map<String, dynamic>> allPilots = [];
+    for (var doc in usersSnapshot.docs) {
+      final data = doc.data();
+      final List<dynamic> pilotsArr = data['pilots'] ?? [];
+      // El doc.id corresponde al "userId", pero cada pilot tiene su propio "id"
+      // Podrías componer un ID tipo "userId_pilotId" o similar
+      // Para simplicidad, guardo la info en un map
+      for (var p in pilotsArr) {
+        if (p is Map<String, dynamic>) {
+          // p['name'] y p['id']
+          allPilots.add({
+            'userId': doc.id,
+            'pilotId': p['id'],
+            'pilotName': p['name'] ?? 'Sin nombre',
+          });
+        } else if (p is String) {
+          // Si un pilot es string, lo adaptamos
+          allPilots.add({
+            'userId': doc.id,
+            'pilotId': 'default',
+            'pilotName': p,
+          });
+        }
       }
     }
-  }
 
-  // Variables locales para la selección en el popup
-  String? selectedTrainerId;
-  // Pilotos seleccionados (vamos a guardar un set de IDs compuestos)
-  Set<String> selectedPilotIds = {};
+    // Variables locales para la selección en el popup
+    String? selectedTrainerId;
+    // Pilotos seleccionados (vamos a guardar un set de IDs compuestos)
+    Set<String> selectedPilotIds = {};
 
-  showDialog(
-    context: context,
-    builder: (ctx) {
-      return AlertDialog(
-        title: Text('Asignar Pilotos a Trainer'),
-        content: StatefulBuilder(
-          builder: (context, setStateSB) {
-            return SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Dropdown de entrenadores
-                  DropdownButton<String>(
-                    value: selectedTrainerId,
-                    hint: Text("Seleccionar Entrenador"),
-                    isExpanded: true,
-                    items: trainerSnapshot.docs.map((trainerDoc) {
-                      final tData = trainerDoc.data();
-                      final tEmail = tData['email'] ?? trainerDoc.id;
-                      return DropdownMenuItem<String>(
-                        value: trainerDoc.id,
-                        child: Text(tEmail),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      setStateSB(() {
-                        selectedTrainerId = val;
-                      });
-                    },
-                  ),
-                  SizedBox(height: 16),
-
-                  // Lista de pilotos en Cards seleccionables
-                  ...allPilots.map((pilot) {
-                    // compongo un ID único
-                    final combinedId = "${pilot['userId']}_${pilot['pilotId']}";
-                    final pName = pilot['pilotName'] ?? '---';
-                    final bool isSelected = selectedPilotIds.contains(combinedId);
-
-                    return InkWell(
-                      onTap: () {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text('Asignar Pilotos a Trainer'),
+          content: StatefulBuilder(
+            builder: (context, setStateSB) {
+              return SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Dropdown de entrenadores
+                    DropdownButton<String>(
+                      value: selectedTrainerId,
+                      hint: Text("Seleccionar Entrenador"),
+                      isExpanded: true,
+                      items: trainerSnapshot.docs.map((trainerDoc) {
+                        final tData = trainerDoc.data();
+                        final tEmail = tData['email'] ?? trainerDoc.id;
+                        return DropdownMenuItem<String>(
+                          value: trainerDoc.id,
+                          child: Text(tEmail),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
                         setStateSB(() {
-                          if (isSelected) {
-                            selectedPilotIds.remove(combinedId);
-                          } else {
-                            selectedPilotIds.add(combinedId);
-                          }
+                          selectedTrainerId = val;
                         });
                       },
-                      child: Card(
-                        color: isSelected ? const Color.fromARGB(255, 54, 133, 58)
-                            : const Color.fromARGB(255, 121, 120, 120),
-                        child: Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: ListTile(
-                            title: Text(pName),
-                            subtitle: Text("ID: $combinedId"),
+                    ),
+                    SizedBox(height: 16),
+
+                    // Lista de pilotos en Cards seleccionables
+                    ...allPilots.map((pilot) {
+                      // compongo un ID único
+                      final combinedId =
+                          "${pilot['userId']}_${pilot['pilotId']}";
+                      final pName = pilot['pilotName'] ?? '---';
+                      final bool isSelected =
+                          selectedPilotIds.contains(combinedId);
+
+                      return InkWell(
+                        onTap: () {
+                          setStateSB(() {
+                            if (isSelected) {
+                              selectedPilotIds.remove(combinedId);
+                            } else {
+                              selectedPilotIds.add(combinedId);
+                            }
+                          });
+                        },
+                        child: Card(
+                          color: isSelected
+                              ? const Color.fromARGB(255, 54, 133, 58)
+                              : const Color.fromARGB(255, 121, 120, 120),
+                          child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: ListTile(
+                              title: Text(pName),
+                              subtitle: Text("ID: $combinedId"),
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
-                ],
-              ),
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (selectedTrainerId == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Selecciona un entrenador')),
-                );
-                return;
-              }
-              // Guardamos la lista en un campo "assignedPilots" en el doc del entrenador
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(selectedTrainerId)
-                  .update({
-                'assignedPilots': selectedPilotIds.toList(),
-              });
-
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Pilotos asignados correctamente')),
+                      );
+                    }).toList(),
+                  ],
+                ),
               );
             },
-            child: Text('Guardar'),
           ),
-        ],
-      );
-    },
-  );
-}
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (selectedTrainerId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Selecciona un entrenador')),
+                  );
+                  return;
+                }
+                // Guardamos la lista en un campo "assignedPilots" en el doc del entrenador
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(selectedTrainerId)
+                    .update({
+                  'assignedPilots': selectedPilotIds.toList(),
+                });
 
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Pilotos asignados correctamente')),
+                );
+              },
+              child: Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   Future<void> _editTime(
       String sessionId, String pilotId, int timeIndex, int newTime) async {
@@ -829,25 +850,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         ..._pilotControllers.asMap().entries.map((entry) {
                           int index = entry.key;
-                          return Row(
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: entry.value,
-                                  decoration: InputDecoration(
-                                    labelText: 'Piloto ${index + 1}',
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: entry.value,
+                                      decoration: InputDecoration(
+                                        labelText: 'Piloto ${index + 1}',
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  IconButton(
+                                    icon: Icon(Icons.delete),
+                                    onPressed: () {
+                                      setState(() {
+                                        _pilotControllers.removeAt(index);
+                                        _pilots.removeAt(index);
+                                      });
+                                    },
+                                  )
+                                ],
                               ),
-                              IconButton(
-                                icon: Icon(Icons.delete),
-                                onPressed: () {
-                                  setState(() {
-                                    _pilotControllers.removeAt(index);
-                                    _pilots.removeAt(index);
-                                  });
+                              // 👇 Nuevo campo para RFID
+                              TextField(
+                                decoration: InputDecoration(
+                                  labelText:
+                                      'Etiqueta RFID del piloto ${index + 1}',
+                                ),
+                                onChanged: (val) {
+                                  _pilots[index]['rfid'] = val.trim();
                                 },
-                              )
+                              ),
+                              SizedBox(height: 8),
                             ],
                           );
                         }).toList(),
