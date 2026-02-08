@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 enum ColorPalette { blue, red, green, purple, orange }
 
@@ -13,7 +14,6 @@ class ThemeProvider extends ChangeNotifier {
   void setDarkMode(bool isDark, {bool save = true}) {
     _isDarkMode = isDark;
     notifyListeners();
-    // Aquí se podría agregar lógica para guardar la configuración de forma centralizada
   }
 
   // Cambia la paleta de colores
@@ -22,38 +22,70 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Devuelve un color representativo para cada paleta (para mostrar la opción)
+  // Devuelve un color representativo para cada paleta
   Color getSampleColorForPalette(ColorPalette palette) {
     switch (palette) {
       case ColorPalette.red:
-        return const Color.fromARGB(185, 244, 67, 54);
+        return const Color(0xFFFF4B4B);
       case ColorPalette.green:
-        return const Color.fromARGB(179, 76, 175, 79);
+        return const Color(0xFF00E676);
       case ColorPalette.purple:
-        return const Color.fromARGB(179, 155, 39, 176);
+        return const Color(0xFFD500F9);
       case ColorPalette.orange:
-        return const Color.fromARGB(167, 255, 153, 0);
+        return const Color(0xFFFF9100);
       case ColorPalette.blue:
-      default:
-        return const Color.fromARGB(167, 33, 149, 243);
+        return const Color(0xFF2979FF);
     }
   }
 
-  // Devuelve el color primario actual
   Color get primaryColor => getSampleColorForPalette(_palette);
 
-  // Genera el ThemeData según el modo y la paleta
+  // Genera el ThemeData según el modo y la paleta usando Material 3
   ThemeData get themeData {
-    return ThemeData(
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: primaryColor,
       brightness: _isDarkMode ? Brightness.dark : Brightness.light,
-      primaryColor: primaryColor,
+      primary: primaryColor,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      brightness: _isDarkMode ? Brightness.dark : Brightness.light,
+
+      // Tipografía moderna
+      textTheme: GoogleFonts.interTextTheme(
+        _isDarkMode ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
+      ),
+
+      // Estilos específicos para títulos deportivos
       appBarTheme: AppBarTheme(
-        backgroundColor: primaryColor,
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        titleTextStyle: GoogleFonts.orbitron(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          color: _isDarkMode ? Colors.white : Colors.black,
+        ),
       ),
-      floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: primaryColor,
+
+      cardTheme: CardThemeData(
+        elevation: 8,
+        shadowColor: primaryColor.withValues(alpha: 0.2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
-      // Puedes personalizar otros aspectos del tema aquí
+
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          textStyle: GoogleFonts.orbitron(fontWeight: FontWeight.bold),
+        ),
+      ),
     );
   }
 }

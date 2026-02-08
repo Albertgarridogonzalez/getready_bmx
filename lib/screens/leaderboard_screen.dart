@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import 'package:getready_bmx/providers/theme_provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// Convierte milisegundos en un string con 3 decimales de segundos.
-/// p.ej. 4590 ms => "4.590"
 String formatMs(int ms) {
   double seconds = ms / 1000.0;
   return seconds.toStringAsFixed(3);
@@ -13,15 +14,17 @@ class LeaderboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final primary = themeProvider.primaryColor;
+
     return Scaffold(
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('sessions').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator());
           }
 
-          // Mapea cada ubicación a la lista de pilotos y su distancia
           Map<String, List<Map<String, dynamic>>> locationToPilots = {};
           Map<String, int> locationToDistance = {};
 
@@ -40,15 +43,14 @@ class LeaderboardScreen extends StatelessWidget {
 
               for (var pilotEntry in pilots) {
                 final pilotMap = pilotEntry as Map<String, dynamic>;
-                final String pilotName = pilotMap['name'] ?? 'Piloto sin nombre';
+                final String pilotName =
+                    pilotMap['name'] ?? 'Piloto sin nombre';
                 final List<dynamic> times = pilotMap['times'] ?? [];
 
-                // Calcular el mejor tiempo del piloto
                 final int bestTimePilot = times.isNotEmpty
                     ? times.map((t) => t as int).reduce((a, b) => a < b ? a : b)
                     : 999999;
 
-                // Agregar piloto a la lista de la ubicación correspondiente
                 locationToPilots[location]!.add({
                   'name': pilotName,
                   'bestTime': bestTimePilot,
@@ -57,79 +59,164 @@ class LeaderboardScreen extends StatelessWidget {
             }
           }
 
-          // Ordenar pilotos en cada ubicación y rellenar la lista hasta 20 elementos
           locationToPilots.forEach((key, list) {
-            list.sort((a, b) => (a['bestTime'] as int).compareTo(b['bestTime'] as int));
-            while (list.length < 20) {
-              list.add({'name': '---', 'bestTime': 999999});
-            }
+            list.sort((a, b) =>
+                (a['bestTime'] as int).compareTo(b['bestTime'] as int));
           });
 
           final locationKeys = locationToPilots.keys.toList();
 
-          return Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.0),
-            child: ListView.builder(
-              itemCount: locationKeys.length,
-              itemBuilder: (context, index) {
-                final loc = locationKeys[index];
-                final pilots = locationToPilots[loc]!.take(10).toList();
-                final distance = locationToDistance[loc] ?? 0;
+          return ListView.builder(
+            padding: const EdgeInsets.only(bottom: 120, top: 20),
+            itemCount: locationKeys.length,
+            itemBuilder: (context, index) {
+              final loc = locationKeys[index];
+              final pilots = locationToPilots[loc]!.take(10).toList();
+              final distance = locationToDistance[loc] ?? 0;
 
-                return Card(
-                  margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              return Container(
+                margin:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primary.withOpacity(0.1),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28)),
                   child: Padding(
-                    padding: const EdgeInsets.all(12.0),
+                    padding: const EdgeInsets.all(20.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Título con la ubicación y la distancia
-                        Text(
-                          "$loc - ${distance}m",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                loc.toUpperCase(),
+                                style: GoogleFonts.orbitron(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: primary,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: primary.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                "${distance}M",
+                                style: GoogleFonts.orbitron(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: primary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        Divider(),
-                        ...pilots.take(5).map((pilot) {
-                          final name = pilot['name'] ?? '---';
-                          final int bestTimeMs = pilot['bestTime'] ?? 999999;
-                          final bestTimeFormatted = formatMs(bestTimeMs);
+                        const SizedBox(height: 16),
+                        const Divider(height: 1),
+                        const SizedBox(height: 16),
+                        ...pilots.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final pilot = entry.value;
+                          final bestTimeMs = pilot['bestTime'] ?? 999999;
 
-                          Widget leadingWidget;
-                          final int position = pilots.indexOf(pilot);
-                          switch (position) {
-                            case 0:
-                              leadingWidget = Icon(Icons.emoji_events, color: Colors.amber, size: 35);
-                              break;
-                            case 1:
-                              leadingWidget = Icon(Icons.emoji_events, color: Colors.grey, size: 35);
-                              break;
-                            case 2:
-                              leadingWidget = Icon(Icons.emoji_events, color: Colors.brown, size: 35);
-                              break;
-                            default:
-                              leadingWidget = CircleAvatar(
-                                backgroundColor: Colors.blueGrey,
-                                child: Text((position + 1).toString()),
-                              );
-                          }
-
-                          return ListTile(
-                            leading: leadingWidget,
-                            title: Text(name),
-                            subtitle: Text("Mejor tiempo: $bestTimeFormatted seg"),
+                          return _LeaderboardRow(
+                            rank: i + 1,
+                            name: pilot['name'],
+                            time: formatMs(bestTimeMs),
+                            primaryColor: primary,
                           );
                         }).toList(),
                       ],
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           );
         },
+      ),
+    );
+  }
+}
+
+class _LeaderboardRow extends StatelessWidget {
+  final int rank;
+  final String name;
+  final String time;
+  final Color primaryColor;
+
+  const _LeaderboardRow({
+    required this.rank,
+    required this.name,
+    required this.time,
+    required this.primaryColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color rankColor = Colors.grey.withOpacity(0.5);
+    if (rank == 1) rankColor = Colors.amber;
+    if (rank == 2) rankColor = const Color(0xFFC0C0C0);
+    if (rank == 3) rankColor = const Color(0xFFCD7F32);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color:
+                  rank <= 3 ? rankColor.withOpacity(0.2) : Colors.transparent,
+              shape: BoxShape.circle,
+              border: rank <= 3 ? Border.all(color: rankColor, width: 2) : null,
+            ),
+            child: Text(
+              "$rank",
+              style: GoogleFonts.orbitron(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: rank <= 3 ? rankColor : Colors.grey,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              name,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          Text(
+            "$time s",
+            style: GoogleFonts.orbitron(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: primaryColor,
+            ),
+          ),
+        ],
       ),
     );
   }

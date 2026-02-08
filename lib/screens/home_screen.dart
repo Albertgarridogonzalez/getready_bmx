@@ -7,6 +7,7 @@ import 'package:getready_bmx/screens/records_screen.dart';
 import 'package:getready_bmx/screens/leaderboard_screen.dart';
 import 'package:getready_bmx/screens/settings_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -17,7 +18,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
   final List<String> _pageTitles = [
-    'Inicio',
+    'GateReady BMX',
     'Live',
     'Historial',
     'Leaderboard',
@@ -41,63 +42,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos el provider para usar el color que el usuario eligió
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final baseColor = themeProvider.primaryColor;
-    final darker = darkenColor(baseColor, 0.15);
-    final lighter = lightenColor(baseColor, 0.15);
+    final primary = themeProvider.primaryColor;
+
     return Scaffold(
+      extendBody: true, // Allows content to be visible behind the floating nav
       appBar: AppBar(
-        // Texto a la izquierda
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 12.0),
-          child: Center(
-            child: Text(
-              "GateReady BMX",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        leadingWidth: 140, // Ajusta el espacio para tu texto a la izquierda
-
-        centerTitle: true,
-        elevation: 0,
-
-        // Título (centrado) con el nombre de la sección actual
         title: Text(
           _pageTitles[_selectedIndex],
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        // Aplicamos gradiente en flexibleSpace
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                darker,   // Más oscuro
-              lighter,  // Más claro
-              ],
-            ),
+          style: GoogleFonts.orbitron(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
           ),
         ),
-        //shape: RoundedRectangleBorder(
-        //  borderRadius: BorderRadius.vertical(
-        //    bottom: Radius.circular(25),
-        //  ),
-        //),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
       ),
       body: IndexedStack(
         index: _selectedIndex,
         children: _pages,
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.black,
-        child: Icon(Icons.home, color: Colors.white),
-        onPressed: () => _onItemTapped(0),
+      floatingActionButton: Container(
+        height: 64,
+        width: 64,
+        child: FloatingActionButton(
+          elevation: 4,
+          shape: const CircleBorder(),
+          backgroundColor: primary,
+          child: const Icon(Icons.home_rounded, color: Colors.white, size: 32),
+          onPressed: () => _onItemTapped(0),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomNav(
@@ -108,43 +84,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-Color lightenColor(Color color, [double amount = .1]) {
-  final hsl = HSLColor.fromColor(color);
-  // Aumentamos la lightness (clamp mantiene el valor entre 0 y 1)
-  final hslLight = hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0));
-  return hslLight.toColor();
-}
-
-Color darkenColor(Color color, [double amount = .1]) {
-  final hsl = HSLColor.fromColor(color);
-  final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
-  return hslDark.toColor();
-}
-
-// ----------------------------------------------------------------------
-// Widget que construye la lista de publicaciones (noticias) desde Firestore
-// ----------------------------------------------------------------------
 class _NewsFeedWidget extends StatelessWidget {
   const _NewsFeedWidget({Key? key}) : super(key: key);
 
   String _convertDriveLink(String rawUrl) {
-    if (!rawUrl.contains("drive.google.com/file/d/")) {
-      return rawUrl;
-    }
+    if (!rawUrl.contains("drive.google.com/file/d/")) return rawUrl;
     final parts = rawUrl.split('/');
-    if (parts.length < 6) {
-      return rawUrl;
-    }
-    String fileId = parts[5];
-    if (fileId.contains('?')) {
-      fileId = fileId.split('?')[0];
-    }
-    final directUrl = "https://drive.google.com/uc?export=view&id=$fileId";
-    return directUrl;
+    if (parts.length < 6) return rawUrl;
+    String fileId = parts[5].split('?')[0];
+    return "https://drive.google.com/uc?export=view&id=$fileId";
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final primary = themeProvider.primaryColor;
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('news')
@@ -152,78 +107,104 @@ class _NewsFeedWidget extends StatelessWidget {
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
+          return const Center(child: CircularProgressIndicator());
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text('No hay publicaciones disponibles.'));
+          return const Center(child: Text('No hay publicaciones disponibles.'));
         }
 
         final newsDocs = snapshot.data!.docs;
         return ListView.builder(
+          padding: const EdgeInsets.only(
+              bottom: 120), // Extra padding for the floating nav
           itemCount: newsDocs.length,
           itemBuilder: (context, index) {
-            final doc = newsDocs[index];
-            final data = doc.data() as Map<String, dynamic>;
+            final data = newsDocs[index].data() as Map<String, dynamic>;
+            final finalUrl = _convertDriveLink(data['imageUrl'] ?? '');
 
-            final title = data['title'] ?? 'Sin título';
-            final content = data['content'] ?? 'Sin contenido';
-            final rawImageUrl = data['imageUrl'] ?? '';
-
-            final finalUrl = _convertDriveLink(rawImageUrl);
-
-            return Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              elevation: 4,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Para redondear la parte superior de la imagen
-                  if (finalUrl.isNotEmpty)
-                    ClipRRect(
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
-                      ),
-                      child: Image.network(
-                        finalUrl,
-                        fit: BoxFit.cover,
-                        height: 350,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            height: 250,
-                            color: Colors.grey,
-                            alignment: Alignment.center,
-                            child: Text(
-                              'No se pudo cargar la imagen',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  Padding(
-                    padding: EdgeInsets.all(12.0),
-                    child: ListTile(
-                      title: Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      subtitle: Padding(
-                        padding: EdgeInsets.only(top: 6.0),
-                        child: Text(
-                          content,
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ),
-                    ),
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: primary.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
                   ),
                 ],
+              ),
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (finalUrl.isNotEmpty)
+                      Stack(
+                        children: [
+                          Image.network(
+                            finalUrl,
+                            fit: BoxFit.cover,
+                            height: 280,
+                            width: double.infinity,
+                            errorBuilder: (_, __, ___) => Container(
+                              height: 200,
+                              color: Colors.grey.withOpacity(0.2),
+                              child: const Icon(Icons.broken_image_outlined),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              height: 80,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    (themeProvider.isDarkMode
+                                            ? Colors.black
+                                            : Colors.white)
+                                        .withOpacity(0.8),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            data['title'] ?? 'Sin título',
+                            style: GoogleFonts.orbitron(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              color: primary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            data['content'] ?? 'Sin contenido',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },

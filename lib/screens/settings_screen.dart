@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:getready_bmx/providers/theme_provider.dart';
 import 'package:getready_bmx/services/ble_service.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class SettingsScreen extends StatefulWidget {
   @override
@@ -796,7 +797,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     bool hasPerms = await _bleService.requestPermissions();
     if (!hasPerms) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Faltan permisos de Bluetooth/Ubicación')),
+        const SnackBar(content: Text('Faltan permisos de Bluetooth/Ubicación')),
       );
       return;
     }
@@ -809,20 +810,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) {
+        final primary = Theme.of(context).primaryColor;
         return StatefulBuilder(
           builder: (context, setStateSB) {
             return AlertDialog(
-              title: Text('Configurar ESP32 (BLE)'),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28)),
+              title: Text('CONFIGURAR ESP32',
+                  style: GoogleFonts.orbitron(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: primary)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                        "Paso 1: Buscar dispositivo (Recuerda reiniciar el ESP32)"),
-                    SizedBox(height: 10),
-                    if (_isScanningBle) CircularProgressIndicator(),
+                    Text("PASO 1: BÚSQUEDA",
+                        style: GoogleFonts.orbitron(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    if (_isScanningBle)
+                      const Center(
+                          child: Padding(
+                              padding: EdgeInsets.all(20),
+                              child: CircularProgressIndicator())),
                     if (!_isScanningBle)
-                      ElevatedButton(
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.bluetooth_searching, size: 18),
+                        label: const Text("ESCANEAR DISPOSITIVOS"),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 45),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
                         onPressed: () {
                           setStateSB(() => _isScanningBle = true);
                           _bleService.startScan((device) {
@@ -834,45 +857,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             }
                           });
                         },
-                        child: Text("Escanear (30s config mode)"),
                       ),
+                    const SizedBox(height: 10),
                     ..._discoveredDevices.map((d) => ListTile(
-                          title:
-                              Text(d.name.isNotEmpty ? d.name : "Sin nombre"),
-                          subtitle: Text(d.id),
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                              d.name.isNotEmpty
+                                  ? d.name
+                                  : "Dispositivo desconocido",
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
+                          subtitle: Text(d.id,
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.grey)),
                           onTap: () {
                             _bleService.stopScan();
                             setStateSB(() {
                               _isScanningBle = false;
-                              _selectedPilotId = d
-                                  .id; // Reutilizamos variable o usamos una nueva
+                              _selectedPilotId = d.id;
                             });
                           },
                           trailing: _selectedPilotId == d.id
-                              ? Icon(Icons.check, color: Colors.green)
+                              ? Icon(Icons.check_circle, color: primary)
                               : null,
                         )),
-                    Divider(),
-                    Text("Paso 2: Datos WiFi"),
-                    TextField(
-                        controller: _bleSsidController,
-                        decoration: InputDecoration(labelText: 'SSID WiFi')),
-                    TextField(
-                        controller: _blePassController,
-                        decoration:
-                            InputDecoration(labelText: 'Password WiFi')),
-                    TextField(
-                        controller: _bleDeviceIdController,
-                        decoration:
-                            InputDecoration(labelText: 'ID Dispositivo')),
+                    const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 15),
+                        child: Divider()),
+                    Text("PASO 2: DATOS WIFI",
+                        style: GoogleFonts.orbitron(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey)),
+                    const SizedBox(height: 10),
+                    _buildBleTextField(
+                        _bleSsidController, "SSID WiFi", Icons.wifi),
+                    const SizedBox(height: 12),
+                    _buildBleTextField(_blePassController, "Password WiFi",
+                        Icons.lock_outline),
+                    const SizedBox(height: 12),
+                    _buildBleTextField(_bleDeviceIdController, "ID Dispositivo",
+                        Icons.fingerprint),
                   ],
                 ),
               ),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(ctx),
-                    child: Text('Cancelar')),
+                    child: const Text('CANCELAR')),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
                   onPressed: _selectedPilotId == null
                       ? null
                       : () async {
@@ -884,18 +920,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           );
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
+                            const SnackBar(
                                 content: Text(
                                     'Configuración enviada. El ESP32 se reiniciará.')),
                           );
                         },
-                  child: Text('Enviar Config'),
+                  child: const Text('ENVIAR CONFIG'),
                 ),
               ],
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildBleTextField(
+      TextEditingController controller, String label, IconData icon) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 18),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
   }
 
@@ -948,223 +998,364 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final primary = themeProvider.primaryColor;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;
-    final bool isAdmin = user?.email == '1@1.1' ||
+    final bool isAdmin = (user?.email == '1@1.1' ||
         user?.email == 'admin@admin.com' ||
-        _role == 'Admin';
+        _role == 'Admin');
 
     return Scaffold(
+      extendBody: true,
+      appBar: AppBar(
+        title: Text("CONFIGURACIÓN",
+            style: GoogleFonts.orbitron(
+                fontSize: 18, fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        actions: [
+          if (isAdmin)
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              onPressed: () => _showAdminQuickActions(context),
+            ),
+        ],
+      ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- Fila superior con lista de pilotos, botón de cerrar sesión y menú de ajustes para admin ---
-              Row(
-                children: [
-                  // Aquí mostramos una columna con un TextField para cada piloto
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              _buildSectionTitle("APARIENCIA"),
+              _buildSettingCard(
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        ..._pilotControllers.asMap().entries.map((entry) {
-                          int index = entry.key;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: entry.value,
-                                      decoration: InputDecoration(
-                                        labelText: 'Piloto ${index + 1}',
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: Icon(Icons.delete),
-                                    onPressed: () {
-                                      setState(() {
-                                        _pilotControllers.removeAt(index);
-                                        _pilots.removeAt(index);
-                                      });
-                                    },
-                                  )
-                                ],
-                              ),
-                              // 👇 Nuevo campo para RFID
-                              TextField(
-                                decoration: InputDecoration(
-                                  labelText:
-                                      'Etiqueta RFID del piloto ${index + 1}',
-                                ),
-                                onChanged: (val) {
-                                  _pilots[index]['rfid'] = val.trim();
-                                },
-                              ),
-                              SizedBox(height: 8),
-                            ],
-                          );
-                        }).toList(),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              String newId = DateTime.now()
-                                  .millisecondsSinceEpoch
-                                  .toString();
-                              _pilots.add({'id': newId, 'name': ''});
-                              _pilotControllers.add(TextEditingController());
-                            });
+                        Row(
+                          children: [
+                            Icon(
+                                themeProvider.isDarkMode
+                                    ? Icons.dark_mode_outlined
+                                    : Icons.light_mode_outlined,
+                                color: primary,
+                                size: 20),
+                            const SizedBox(width: 12),
+                            Text(
+                              "MODO ${themeProvider.isDarkMode ? 'OSCURO' : 'CLARO'}",
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                        Switch(
+                          value: themeProvider.isDarkMode,
+                          activeColor: primary,
+                          onChanged: (value) async {
+                            themeProvider.setDarkMode(value);
+                            if (user != null) {
+                              await FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(user.uid)
+                                  .update({'darkMode': value});
+                            }
                           },
-                          child: Text("Añadir Piloto"),
                         ),
                       ],
                     ),
-                  ),
-                  SizedBox(width: 20),
-                  ElevatedButton(
-                    onPressed: () async {
-                      await authProvider.signOut();
-                      Navigator.of(context).pushNamedAndRemoveUntil(
-                        '/login',
-                        (route) => false,
-                      );
-                    },
-                    child: Text('Cerrar Sesión'),
-                    style:
-                        ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                  ),
-                  SizedBox(width: 20),
-                  if (isAdmin)
-                    PopupMenuButton<String>(
-                      icon: Icon(Icons.settings,
-                          color: const Color.fromARGB(255, 70, 69, 69)),
-                      onSelected: (value) {
-                        if (value == 'subir') {
-                          _showPublicationPopup();
-                        } else if (value == 'crear') {
-                          _showCreatePilotPopup();
-                        } else if (value == 'borrar') {
-                          _showDeletePilotsPopup();
-                        } else if (value == 'asignar') {
-                          _showAssignPilotsToTrainerPopup();
-                        } else if (value == 'ble') {
-                          _showBleConfigPopup();
-                        }
-                      },
-                      itemBuilder: (BuildContext context) =>
-                          <PopupMenuEntry<String>>[
-                        PopupMenuItem<String>(
-                          value: 'subir',
-                          child: Text('Subir Publicación'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'crear',
-                          child: Text('Crear Piloto'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'borrar',
-                          child: Text('Borrar Pilotos'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'asignar',
-                          child: Text('Asignar Pilotos a Trainer'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'ble',
-                          enabled: !kIsWeb,
-                          child: Text(kIsWeb
-                              ? 'Configurar ESP32 (Solo en Móvil)'
-                              : 'Configurar ESP32 (BLE)'),
-                        ),
-                      ],
+                    const Divider(height: 30),
+                    const Text(
+                      "PALETA DE COLORES",
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey),
                     ),
-                ],
-              ),
-              SizedBox(height: 10),
-              // Botón para guardar la lista de pilotos (actualiza el documento del usuario)
-              ElevatedButton(
-                onPressed: user != null ? () => updatePilots(user.uid) : null,
-                child: Text('Guardar Pilotos'),
-              ),
-              SizedBox(height: 20),
-              // Sección para cambiar tema (oscuro/claro) y paleta de colores
-              Consumer<ThemeProvider>(
-                builder: (context, themeProvider, child) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Modo Oscuro / Claro",
-                          style: TextStyle(fontSize: 16)),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(themeProvider.isDarkMode ? "Oscuro" : "Claro"),
-                          Switch(
-                            value: themeProvider.isDarkMode,
-                            onChanged: (value) async {
-                              themeProvider.setDarkMode(value);
+                    const SizedBox(height: 15),
+                    SizedBox(
+                      height: 50,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: ColorPalette.values.map((palette) {
+                          final isSelected = themeProvider.palette == palette;
+                          final color =
+                              themeProvider.getSampleColorForPalette(palette);
+                          return GestureDetector(
+                            onTap: () async {
+                              themeProvider.setPalette(palette);
                               if (user != null) {
                                 await FirebaseFirestore.instance
                                     .collection('users')
                                     .doc(user.uid)
-                                    .update({'darkMode': value});
+                                    .update({
+                                  'palette': palette.toString().split('.').last
+                                });
                               }
                             },
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 20),
-                      Text("Selecciona la paleta de colores:",
-                          style: TextStyle(fontSize: 16)),
-                      SizedBox(
-                        height: 80,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: ColorPalette.values.map((palette) {
-                            return GestureDetector(
-                              onTap: () async {
-                                themeProvider.setPalette(palette);
-                                if (user != null) {
-                                  await FirebaseFirestore.instance
-                                      .collection('users')
-                                      .doc(user.uid)
-                                      .update({
-                                    'palette':
-                                        palette.toString().split('.').last,
-                                  });
-                                }
-                              },
-                              child: Container(
-                                margin: EdgeInsets.all(8.0),
-                                width: 60,
-                                decoration: BoxDecoration(
-                                  color: themeProvider
-                                      .getSampleColorForPalette(palette),
-                                  border: themeProvider.palette == palette
-                                      ? Border.all(
-                                          width: 3, color: Colors.white)
-                                      : null,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 15),
+                              width: 50,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                    width: 3,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.transparent),
+                                boxShadow: isSelected
+                                    ? [
+                                        BoxShadow(
+                                            color: color.withOpacity(0.4),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4))
+                                      ]
+                                    : [],
                               ),
-                            );
-                          }).toList(),
-                        ),
+                              child: isSelected
+                                  ? const Icon(Icons.check,
+                                      color: Colors.white, size: 20)
+                                  : null,
+                            ),
+                          );
+                        }).toList(),
                       ),
-                    ],
-                  );
-                },
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(height: 20),
-              // ---------- SECCIÓN DE ADMIN: EDITAR TIEMPOS DE SESIÓN ----------
-              if (isAdmin) _buildAdminSessionPilotTimesSection(),
+              const SizedBox(height: 25),
+              _buildSectionTitle("MIS PILOTOS"),
+              _buildSettingCard(
+                child: Column(
+                  children: [
+                    ...List.generate(_pilotControllers.length, (index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: primary.withOpacity(0.1),
+                                  child: Text("${index + 1}",
+                                      style: TextStyle(
+                                          color: primary,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold)),
+                                ),
+                                const SizedBox(width: 10),
+                                Text("PILOTO ${index + 1}",
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey)),
+                                const Spacer(),
+                                if (_pilotControllers.length > 1)
+                                  IconButton(
+                                    icon: const Icon(
+                                        Icons.remove_circle_outline,
+                                        size: 18,
+                                        color: Colors.redAccent),
+                                    onPressed: () => setState(() {
+                                      _pilots.removeAt(index);
+                                      _pilotControllers.removeAt(index);
+                                    }),
+                                  )
+                              ],
+                            ),
+                            TextField(
+                              controller: _pilotControllers[index],
+                              decoration: InputDecoration(
+                                hintText: "Nombre del piloto",
+                                prefixIcon: Icon(Icons.person_outline,
+                                    size: 20, color: primary),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 0, vertical: 0),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              decoration: InputDecoration(
+                                hintText: "RFID Tag (Opcional)",
+                                prefixIcon: Icon(Icons.nfc_outlined,
+                                    size: 20, color: primary),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 0, vertical: 0),
+                              ),
+                              onChanged: (val) =>
+                                  _pilots[index]['rfid'] = val.trim(),
+                              controller: TextEditingController(
+                                  text:
+                                      _pilots[index]['rfid']?.toString() ?? ''),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    TextButton.icon(
+                      icon: Icon(Icons.add_circle_outline,
+                          size: 20, color: primary),
+                      label: Text("AÑADIR PILOTO",
+                          style: GoogleFonts.orbitron(
+                              fontSize: 10, fontWeight: FontWeight.bold)),
+                      onPressed: () => setState(() {
+                        String newId =
+                            DateTime.now().millisecondsSinceEpoch.toString();
+                        _pilots.add({'id': newId, 'name': ''});
+                        _pilotControllers.add(TextEditingController());
+                      }),
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                        backgroundColor: primary.withOpacity(0.1),
+                        foregroundColor: primary,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed:
+                          user != null ? () => updatePilots(user.uid) : null,
+                      child: Text("GUARDAR CAMBIOS",
+                          style: GoogleFonts.orbitron(
+                              fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ),
+              if (isAdmin) ...[
+                const SizedBox(height: 25),
+                _buildSectionTitle("ADMINISTRACIÓN"),
+                _buildAdminSessionPilotTimesSection(),
+              ],
+              const SizedBox(height: 40),
+              Center(
+                child: TextButton.icon(
+                  icon: const Icon(Icons.logout, color: Colors.redAccent),
+                  label: Text("CERRAR SESIÓN",
+                      style: GoogleFonts.orbitron(
+                          color: Colors.redAccent,
+                          fontWeight: FontWeight.bold)),
+                  onPressed: () async {
+                    await authProvider.signOut();
+                    Navigator.of(context)
+                        .pushNamedAndRemoveUntil('/login', (route) => false);
+                  },
+                ),
+              ),
+              const SizedBox(height: 120),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 12),
+      child: Text(
+        title,
+        style: GoogleFonts.orbitron(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingCard({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  void _showAdminQuickActions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 20),
+              Text("CONSOLA ADMIN",
+                  style: GoogleFonts.orbitron(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 20),
+              _buildAdminActionTile(Icons.campaign_outlined,
+                  "Subir Publicación", () => _showPublicationPopup()),
+              _buildAdminActionTile(Icons.person_add_outlined, "Crear Piloto",
+                  () => _showCreatePilotPopup()),
+              _buildAdminActionTile(Icons.group_remove_outlined,
+                  "Borrar Pilotos", () => _showDeletePilotsPopup()),
+              _buildAdminActionTile(
+                  Icons.assignment_ind_outlined,
+                  "Asignar Pilotos a Trainer",
+                  () => _showAssignPilotsToTrainerPopup()),
+              _buildAdminActionTile(
+                  Icons.developer_board,
+                  "Configurar ESP32 (BLE)",
+                  kIsWeb ? null : () => _showBleConfigPopup()),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAdminActionTile(
+      IconData icon, String label, VoidCallback? onTap) {
+    final primary = Theme.of(context).primaryColor;
+    return ListTile(
+      leading: Icon(icon, color: onTap == null ? Colors.grey : primary),
+      title: Text(label,
+          style: TextStyle(
+              color: onTap == null ? Colors.grey : null,
+              fontWeight: FontWeight.w500)),
+      onTap: onTap != null
+          ? () {
+              Navigator.pop(context);
+              onTap();
+            }
+          : null,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     );
   }
 }

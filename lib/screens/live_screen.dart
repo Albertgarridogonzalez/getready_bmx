@@ -2,13 +2,13 @@ import 'dart:async';
 import 'dart:math'; // Para generar números aleatorios
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:getready_bmx/providers/theme_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:getready_bmx/providers/auth_provider.dart';
 import 'package:flutter/foundation.dart';
-
 
 /// Convierte milisegundos (int) a un String con segundos y 3 decimales.
 /// Ej: 4590 ms -> "4.590", 34578 ms -> "34.578"
@@ -377,105 +377,108 @@ class _LiveScreenState extends State<LiveScreen> {
   // Dialog para seleccionar pilotos
   // ----------------------------------------------------------------
   void showPilotSelectionPopup() async {
-  // Si ya hay una sesión, cargamos los pilotos seleccionados previamente
-  if (currentSessionId != null) {
-    DocumentSnapshot sessionDoc = await FirebaseFirestore.instance
-        .collection('sessions')
-        .doc(currentSessionId)
-        .get();
-    List<dynamic> currentPilots =
-        (sessionDoc.data() as Map<String, dynamic>?)?['pilots'] ?? [];
-    selectedPilots = List<Map<String, dynamic>>.from(currentPilots);
-  }
-  // Creamos un mapa para tener los pilotos ya seleccionados (clave = id único)
-  Map<String, Map<String, dynamic>> currentPilotsMap = {
-    for (var p in selectedPilots) p['id']: p
-  };
+    // Si ya hay una sesión, cargamos los pilotos seleccionados previamente
+    if (currentSessionId != null) {
+      DocumentSnapshot sessionDoc = await FirebaseFirestore.instance
+          .collection('sessions')
+          .doc(currentSessionId)
+          .get();
+      List<dynamic> currentPilots =
+          (sessionDoc.data() as Map<String, dynamic>?)?['pilots'] ?? [];
+      selectedPilots = List<Map<String, dynamic>>.from(currentPilots);
+    }
+    // Creamos un mapa para tener los pilotos ya seleccionados (clave = id único)
+    Map<String, Map<String, dynamic>> currentPilotsMap = {
+      for (var p in selectedPilots) p['id']: p
+    };
 
-  // Obtenemos todos los documentos de usuarios
-  var snapshot = await FirebaseFirestore.instance.collection('users').get();
-  // Copia local de los pilotos seleccionados en la sesión actual
-  List<Map<String, dynamic>> pilots = List<Map<String, dynamic>>.from(selectedPilots);
+    // Obtenemos todos los documentos de usuarios
+    var snapshot = await FirebaseFirestore.instance.collection('users').get();
+    // Copia local de los pilotos seleccionados en la sesión actual
+    List<Map<String, dynamic>> pilots =
+        List<Map<String, dynamic>>.from(selectedPilots);
 
-  showDialog(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: Text("Seleccionar Pilotos"),
-        content: StatefulBuilder(
-          builder: (context, setStateSB) {
-            return Container(
-              width: double.maxFinite,
-              child: ListView(
-                shrinkWrap: true,
-                children: snapshot.docs.expand((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  // Obtener la lista de pilotos del usuario (ahora es una lista de maps)
-                  final List<dynamic> userPilots = data['pilots'] ?? [];
-                  return userPilots.map((pilotData) {
-                    // pilotData es un Map, extraemos el nombre y el id original
-                    final pilotMap = pilotData as Map<String, dynamic>;
-                    final String pilotName = pilotMap['name']?.toString() ?? 'Sin nombre';
-                    // Creamos un id único combinando el id del usuario y el id del piloto
-                    final String pilotId = "${doc.id}_${pilotMap['id']}";
-                    bool isSelected = currentPilotsMap.containsKey(pilotId);
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Seleccionar Pilotos"),
+          content: StatefulBuilder(
+            builder: (context, setStateSB) {
+              return Container(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: snapshot.docs.expand((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    // Obtener la lista de pilotos del usuario (ahora es una lista de maps)
+                    final List<dynamic> userPilots = data['pilots'] ?? [];
+                    return userPilots.map((pilotData) {
+                      // pilotData es un Map, extraemos el nombre y el id original
+                      final pilotMap = pilotData as Map<String, dynamic>;
+                      final String pilotName =
+                          pilotMap['name']?.toString() ?? 'Sin nombre';
+                      // Creamos un id único combinando el id del usuario y el id del piloto
+                      final String pilotId = "${doc.id}_${pilotMap['id']}";
+                      bool isSelected = currentPilotsMap.containsKey(pilotId);
 
-                    return InkWell(
-                      onTap: () {
-                        setStateSB(() {
-                          if (isSelected) {
-                            pilots.removeWhere((p) => p['id'] == pilotId);
-                            currentPilotsMap.remove(pilotId);
-                          } else {
-                            pilots.add({
-                              'id': pilotId,
-                              'name': pilotName,
-                              'times': [],
-                              'active': true,
-                            });
-                            currentPilotsMap[pilotId] = pilots.last;
-                          }
-                        });
-                      },
-                      child: Card(
-                        color: isSelected
-                            ? const Color.fromARGB(255, 54, 133, 58)
-                            : const Color.fromARGB(255, 121, 120, 120),
-                        child: Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: ListTile(
-                            title: Text(pilotName),
-                            subtitle: isSelected ? Text("Esperando tiempo...") : null,
+                      return InkWell(
+                        onTap: () {
+                          setStateSB(() {
+                            if (isSelected) {
+                              pilots.removeWhere((p) => p['id'] == pilotId);
+                              currentPilotsMap.remove(pilotId);
+                            } else {
+                              pilots.add({
+                                'id': pilotId,
+                                'name': pilotName,
+                                'times': [],
+                                'active': true,
+                              });
+                              currentPilotsMap[pilotId] = pilots.last;
+                            }
+                          });
+                        },
+                        child: Card(
+                          color: isSelected
+                              ? const Color.fromARGB(255, 54, 133, 58)
+                              : const Color.fromARGB(255, 121, 120, 120),
+                          child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: ListTile(
+                              title: Text(pilotName),
+                              subtitle: isSelected
+                                  ? Text("Esperando tiempo...")
+                                  : null,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList();
-                }).toList(),
-              ),
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                selectedPilots = pilots;
-              });
-              FirebaseFirestore.instance
-                  .collection('sessions')
-                  .doc(currentSessionId)
-                  .update({'pilots': pilots});
-              Navigator.pop(context);
+                      );
+                    }).toList();
+                  }).toList(),
+                ),
+              );
             },
-            child: Text("Iniciar"),
           ),
-        ],
-      );
-    },
-  );
-}
-
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  selectedPilots = pilots;
+                });
+                FirebaseFirestore.instance
+                    .collection('sessions')
+                    .doc(currentSessionId)
+                    .update({'pilots': pilots});
+                Navigator.pop(context);
+              },
+              child: Text("Iniciar"),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   // ----------------------------------------------------------------
   // Guarda el tiempo en milisegundos para un piloto en la sesión actual
@@ -534,431 +537,414 @@ class _LiveScreenState extends State<LiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final primary = themeProvider.primaryColor;
     final authProvider = Provider.of<AuthProvider>(context);
-    final bool isAdmin = authProvider.user?.email == '1@1.1';
+    final bool isAdmin = (authProvider.user?.email == '1@1.1' ||
+        authProvider.user?.email == 'admin@admin.com');
 
     return Scaffold(
-      body: Stack(
+      extendBody: true,
+      appBar: AppBar(
+        title: Text("LIVE SESSION",
+            style: GoogleFonts.orbitron(
+                fontSize: 18, fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        actions: [
+          if (isAdmin)
+            IconButton(
+              icon: Icon(
+                  debugActive ? Icons.bug_report : Icons.bug_report_outlined,
+                  color: debugActive ? Colors.orange : null),
+              onPressed: () {
+                setState(() => debugActive = !debugActive);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text(
+                          "Debug ${debugActive ? 'activado' : 'desactivado'}")),
+                );
+              },
+            ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Column(
+          children: [
+            if (isAdmin) _buildAdminControlCard(primary),
+
+            if (currentSessionId != null || !isAdmin) ...[
+              const SizedBox(height: 20),
+              _buildSessionInfoCard(primary, isAdmin),
+              const SizedBox(height: 20),
+              Expanded(
+                child: isAdmin
+                    ? _buildAdminPilotsMonitoring(currentSessionId!)
+                    : _buildUserActiveSessionMonitoring(),
+              ),
+            ] else if (isAdmin) ...[
+              const Expanded(
+                child: Center(
+                  child: Text("Selecciona o crea una sesión para comenzar",
+                      style: TextStyle(
+                          color: Colors.grey, fontStyle: FontStyle.italic)),
+                ),
+              ),
+            ],
+            const SizedBox(height: 80), // Space for floating nav
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdminControlCard(Color primary) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4))
+        ],
+      ),
+      child: Column(
         children: [
-          Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                // ----------------------------------
-                // SECCIÓN PARA ADMIN
-                // ----------------------------------
-                if (isAdmin) ...[
-                  // Card que contiene los íconos superiores y el botón “Añadir Riders”
-                  Card(
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Column(
-                        children: [
-                          // Fila con íconos BLE, debug, random times, y menú de ajustes
-                          Row(
-                            children: [
-                              // Ícono de estado del ESP32 (arriba-izquierda)
-                              GestureDetector(
-                                onTap: () {
-                                  if (!esp32Connected) {
-                                    scanAndConnect();
-                                  }
-                                },
-                                child: Icon(
-                                  esp32Connected
-                                      ? Icons.check_circle
-                                      : Icons.cancel,
-                                  color: esp32Connected
-                                      ? Colors.green
-                                      : Colors.red,
-                                  size: 30,
-                                ),
-                              ),
-                              SizedBox(width: 20),
-                              // Ícono para activar/desactivar modo debug
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    debugActive = !debugActive;
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        "Debug ${debugActive ? 'activado' : 'desactivado'}",
-                                      ),
-                                      duration: Duration(seconds: 2),
-                                    ),
-                                  );
-                                },
-                                child: Icon(
-                                  Icons.bug_report,
-                                  color:
-                                      debugActive ? Colors.orange : Colors.grey,
-                                  size: 30,
-                                ),
-                              ),
-                              SizedBox(width: 20),
-                              // Ícono para insertar 10 tiempos aleatorios
-                              GestureDetector(
-                                onTap: () {
-                                  // Popup de confirmación
-                                  showDialog(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title:
-                                          Text("Insertar tiempos aleatorios"),
-                                      content: Text(
-                                          "¿Deseas insertar 10 tiempos aleatorios (1.5s a 3.0s) a cada piloto activo de esta sesión?"),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx),
-                                          child: Text("Cancelar"),
-                                        ),
-                                        TextButton(
-                                          onPressed: () {
-                                            Navigator.pop(ctx);
-                                            insertRandomTimes();
-                                          },
-                                          child: Text("Aceptar"),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                                child: Icon(
-                                  Icons.hourglass_full_rounded,
-                                  color: Colors.purpleAccent,
-                                  size: 30,
-                                ),
-                              ),
-                              Spacer(),
-                              // Ícono de ajustes (popup menu) con “Crear Ubicación” y “Crear Sesión”
-                              PopupMenuButton<String>(
-                                icon: Icon(Icons.settings),
-                                onSelected: (value) {
-                                  if (value == 'ubicacion') {
-                                    _showCreateLocationDialog();
-                                  } else if (value == 'sesion') {
-                                    _showCreateSessionPopup();
-                                  }
-                                },
-                                itemBuilder: (BuildContext context) =>
-                                    <PopupMenuEntry<String>>[
-                                  PopupMenuItem<String>(
-                                    value: 'ubicacion',
-                                    child: Text('Crear Ubicación'),
-                                  ),
-                                  PopupMenuItem<String>(
-                                    value: 'sesion',
-                                    child: Text('Crear Sesión'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-
-                          SizedBox(height: 16),
-
-                          // Dropdown de selección de sesión
-                          StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance
-                                .collection('sessions')
-                                .orderBy('date', descending: true)
-                                .limit(5)
-                                .snapshots(), // Escuchar TODOS los cambios en sesiones
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData) {
-                                return Center(
-                                    child: CircularProgressIndicator());
-                              }
-
-                              var docs = snapshot.data!.docs;
-                              if (docs.isEmpty) {
-                                return Text("No hay sesiones disponibles.");
-                              }
-
-                              return DropdownButton<String>(
-                                value: currentSessionId,
-                                hint: Text("Seleccionar sesión"),
-                                isExpanded: true,
-                                items: docs.map((doc) {
-                                  var data = doc.data() as Map<String, dynamic>;
-                                  DateTime sessionDate =
-                                      data['date'] is Timestamp
-                                          ? (data['date'] as Timestamp).toDate()
-                                          : data['date'];
-                                  String displayText =
-                                      "${data['location']}, ${data['distance']} m, ${sessionDate.toString().split(' ')[0]}";
-                                  return DropdownMenuItem<String>(
-                                    value: doc.id,
-                                    child: Text(displayText),
-                                  );
-                                }).toList(),
-                                onChanged: (String? newValue) async {
-                                  if (newValue != null) {
-                                    FirebaseFirestore db =
-                                        FirebaseFirestore.instance;
-
-                                    // 🔄 Obtener todas las sesiones
-                                    QuerySnapshot sessionSnapshot =
-                                        await db.collection('sessions').get();
-
-                                    WriteBatch batch = db.batch();
-
-                                    // Recorrer todas las sesiones y poner `active: false` excepto la seleccionada
-                                    for (var doc in sessionSnapshot.docs) {
-                                      batch.update(doc.reference,
-                                          {'active': doc.id == newValue});
-                                    }
-
-                                    // Ejecutar la actualización en Firestore
-                                    await batch.commit();
-
-                                    // 🔄 Obtener la sesión activa para actualizar la UI
-                                    DocumentSnapshot sessionDoc = await db
-                                        .collection('sessions')
-                                        .doc(newValue)
-                                        .get();
-                                    if (sessionDoc.exists) {
-                                      Map<String, dynamic> sessionData =
-                                          sessionDoc.data()
-                                              as Map<String, dynamic>;
-                                      DateTime docDate = sessionData['date']
-                                              is Timestamp
-                                          ? (sessionData['date'] as Timestamp)
-                                              .toDate()
-                                          : sessionData['date'];
-
-                                      setState(() {
-                                        currentSessionId = newValue;
-                                        selectedLocation =
-                                            sessionData['location'];
-                                        selectedDistance =
-                                            sessionData['distance'];
-                                        selectedDate = docDate;
-                                      });
-                                    }
-
-                                    // 🔄 Forzar actualización en Web
-                                    await Future.delayed(
-                                        Duration(milliseconds: 200));
-                                    setState(() {});
-                                  }
-                                },
-                              );
-                            },
-                          ),
-
-                          // Si hay sesión seleccionada, botón de “Añadir Riders”
-                          if (currentSessionId != null) ...[
-                            SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: showPilotSelectionPopup,
-                              child: Text("Añadir Riders"),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  _buildStatusIndicator(
+                    icon: esp32Connected
+                        ? Icons.bluetooth_connected
+                        : Icons.bluetooth_disabled,
+                    color: esp32Connected ? Colors.green : Colors.red,
+                    label: esp32Connected ? "CONECTADO" : "DESCONECTADO",
+                    onTap: esp32Connected ? null : scanAndConnect,
                   ),
-
-                  // Muestra info de la sesión seleccionada (si existe)
-                  if (currentSessionId != null) ...[
-                    SizedBox(height: 20),
-                    Center(
-                      child: Text(
-                        "$selectedLocation, ${selectedDistance ?? 0} m, ${selectedDate.toString().split(' ')[0]}",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    // Lista de pilotos activos
-                    Expanded(
-                      child: StreamBuilder<DocumentSnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('sessions')
-                            .doc(currentSessionId)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return Center(child: CircularProgressIndicator());
-                          }
-                          var data =
-                              snapshot.data!.data()! as Map<String, dynamic>;
-                          List<dynamic> pilots = data['pilots'] ?? [];
-                          // Filtra solo los pilotos activos
-                          List<dynamic> activePilots = pilots.where((p) {
-                            return ((p as Map<String, dynamic>)['active'] ??
-                                false) as bool;
-                          }).toList();
-
-                          return Consumer<ThemeProvider>(
-                            builder: (context, themeProvider, child) {
-                              return ListView(
-                                children: activePilots.map((pilot) {
-                                  final pilotMap =
-                                      pilot as Map<String, dynamic>;
-                                  final String pilotId =
-                                      pilotMap['id'].toString();
-                                  final String pilotName =
-                                      pilotMap['name'].toString();
-
-                                  final bool isSelected =
-                                      (pilotId == waitingPilotId);
-                                  final bool isDarkMode =
-                                      themeProvider.isDarkMode;
-                                  final Color cardColor = isSelected
-                                      ? (isDarkMode
-                                          ? const Color.fromARGB(
-                                              255, 40, 102, 43)
-                                          : const Color.fromARGB(
-                                              255, 73, 175, 78))
-                                      : (isDarkMode
-                                          ? const Color.fromARGB(
-                                              255, 54, 54, 54)
-                                          : const Color.fromARGB(
-                                              255, 168, 167, 167));
-
-                                  final times =
-                                      pilotMap['times'] as List<dynamic>? ?? [];
-                                  final formattedTimes = times
-                                      .map((t) => formatMs(t as int))
-                                      .toList();
-                                  final timesStr = formattedTimes.join("  ");
-
-                                  return InkWell(
-                                    onTap: () {
-                                      if (esp32Connected) {
-                                        setState(() {
-                                          waitingPilotId = pilotId;
-                                        });
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              "Esperando datos del ESP32 para el piloto $pilotName...",
-                                            ),
-                                            duration: Duration(seconds: 2),
-                                          ),
-                                        );
-                                      } else {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content:
-                                                Text("ESP32 no está conectado"),
-                                            duration: Duration(seconds: 2),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    child: Card(
-                                      margin: EdgeInsets.symmetric(
-                                          vertical: 6.0, horizontal: 8.0),
-                                      color: cardColor,
-                                      child: ListTile(
-                                        title: Text(pilotName),
-                                        subtitle: Text(
-                                          times.isEmpty
-                                              ? "Tiempos: ---"
-                                              : "Tiempos: $timesStr",
-                                        ),
-                                        trailing: Icon(Icons.timer),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                  const SizedBox(width: 20),
+                  _buildStatusIndicator(
+                    icon: Icons.hourglass_full_rounded,
+                    color: Colors.purpleAccent,
+                    label: "RANDOM",
+                    onTap: () => _showConfirmRandomTimes(),
+                  ),
                 ],
+              ),
+              IconButton(
+                icon: Icon(Icons.settings, color: primary),
+                onPressed: () => _showQuickSettings(),
+              ),
+            ],
+          ),
+          const Divider(height: 30),
+          _buildSessionSelector(),
+          if (currentSessionId != null) ...[
+            const SizedBox(height: 15),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.person_add_outlined, size: 20),
+              label: Text("GESTIONAR RIDERS",
+                  style: GoogleFonts.orbitron(
+                      fontSize: 11, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 45),
+                backgroundColor: primary.withOpacity(0.1),
+                foregroundColor: primary,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: showPilotSelectionPopup,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
-                // ----------------------------------
-                // SECCIÓN PARA USUARIOS NO ADMIN
-                // ----------------------------------
-                if (!isAdmin)
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('sessions')
-                          .where('active',
-                              isEqualTo: true) // Solo sesiones activas
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return Center(child: CircularProgressIndicator());
-                        }
-                        var docs = snapshot.data!.docs;
-                        if (docs.isEmpty) {
-                          return Center(
-                              child: Text(
-                                  "No hay sesiones activas en este momento."));
-                        }
+  Widget _buildStatusIndicator(
+      {required IconData icon,
+      required Color color,
+      required String label,
+      VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 4),
+          Text(label,
+              style: GoogleFonts.orbitron(
+                  fontSize: 8, fontWeight: FontWeight.bold, color: color)),
+        ],
+      ),
+    );
+  }
 
-                        var sessionData =
-                            docs.first.data() as Map<String, dynamic>;
-                        DateTime sessionDate = sessionData['date'] is Timestamp
-                            ? (sessionData['date'] as Timestamp).toDate()
-                            : sessionData['date'];
+  Widget _buildSessionSelector() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('sessions')
+          .orderBy('date', descending: true)
+          .limit(5)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const LinearProgressIndicator();
+        var docs = snapshot.data!.docs;
+        if (docs.isEmpty) return const Text("No hay sesiones");
 
-                        final pilots =
-                            sessionData['pilots'] as List<dynamic>? ?? [];
-                        final activePilots =
-                            pilots.where((p) => p['active'] == true).toList();
-
-                        return Column(
-                          children: [
-                            Center(
-                              child: Text(
-                                "${sessionData['location']}, ${sessionData['distance']} m, ${sessionDate.toString().split(' ')[0]}",
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                    fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            SizedBox(height: 10),
-                            Expanded(
-                              child: ListView(
-                                children: activePilots.map((pilot) {
-                                  final times =
-                                      pilot['times'] as List<dynamic>? ?? [];
-                                  final formattedTimes = times
-                                      .map((t) => formatMs(t as int))
-                                      .toList();
-                                  final timesStr = formattedTimes.join("  ");
-
-                                  return Card(
-                                    child: ListTile(
-                                      title: Text(pilot['name']),
-                                      subtitle: Text(
-                                        times.isEmpty
-                                            ? "Tiempos: ---"
-                                            : "Tiempos: $timesStr",
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-              ],
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.withOpacity(0.2)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: currentSessionId,
+              hint: const Text("Seleccionar sesión activa"),
+              isExpanded: true,
+              items: docs.map((doc) {
+                var data = doc.data() as Map<String, dynamic>;
+                DateTime date = (data['date'] as Timestamp).toDate();
+                return DropdownMenuItem<String>(
+                  value: doc.id,
+                  child: Text(
+                      "${data['location']} - ${date.toString().split(' ')[0]}",
+                      style: const TextStyle(fontSize: 13)),
+                );
+              }).toList(),
+              onChanged: (val) async {
+                if (val != null) _activateSession(val);
+              },
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _activateSession(String sessionId) async {
+    FirebaseFirestore db = FirebaseFirestore.instance;
+    QuerySnapshot sessions = await db.collection('sessions').get();
+    WriteBatch batch = db.batch();
+    for (var doc in sessions.docs) {
+      batch.update(doc.reference, {'active': doc.id == sessionId});
+    }
+    await batch.commit();
+
+    DocumentSnapshot doc = await db.collection('sessions').doc(sessionId).get();
+    if (doc.exists) {
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      setState(() {
+        currentSessionId = sessionId;
+        selectedLocation = data['location'];
+        selectedDistance = data['distance'];
+        selectedDate = (data['date'] as Timestamp).toDate();
+      });
+    }
+  }
+
+  Widget _buildSessionInfoCard(Color primary, bool isAdmin) {
+    if (!isAdmin) {
+      // Logic for fetching active session for non-admin already exists?
+      // Need a StreamBuilder here for the user to see the REAL active session.
+      return StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('sessions')
+            .where('active', isEqualTo: true)
+            .limit(1)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const SizedBox.shrink();
+          }
+          var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+          return _infoCardContent(data['location'], data['distance'],
+              (data['date'] as Timestamp).toDate(), primary);
+        },
+      );
+    }
+    return _infoCardContent(selectedLocation ?? "---", selectedDistance ?? 0,
+        selectedDate, primary);
+  }
+
+  Widget _infoCardContent(String loc, int dist, DateTime date, Color primary) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [primary.withOpacity(0.8), primary]),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+              color: primary.withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 4))
         ],
+      ),
+      child: Column(
+        children: [
+          Text(loc.toUpperCase(),
+              style: GoogleFonts.orbitron(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16)),
+          const SizedBox(height: 4),
+          Text("${dist}m • ${date.toString().split(' ')[0]}",
+              style: GoogleFonts.orbitron(color: Colors.white70, fontSize: 10)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminPilotsMonitoring(String sessionId) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('sessions')
+          .doc(sessionId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists)
+          return const Center(child: CircularProgressIndicator());
+        var data = snapshot.data!.data() as Map<String, dynamic>;
+        List<dynamic> activePilots =
+            (data['pilots'] ?? []).where((p) => p['active'] == true).toList();
+
+        return ListView.builder(
+          itemCount: activePilots.length,
+          itemBuilder: (context, idx) {
+            final p = activePilots[idx];
+            final bool isWaiting = p['id'] == waitingPilotId;
+            return _buildPilotLiveCard(p, isWaiting);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildUserActiveSessionMonitoring() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('sessions')
+          .where('active', isEqualTo: true)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+          return const Center(child: Text("Esperando sesión activa..."));
+        var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+        List<dynamic> activePilots =
+            (data['pilots'] ?? []).where((p) => p['active'] == true).toList();
+
+        return ListView.builder(
+          itemCount: activePilots.length,
+          itemBuilder: (context, idx) =>
+              _buildPilotLiveCard(activePilots[idx], false),
+        );
+      },
+    );
+  }
+
+  Widget _buildPilotLiveCard(Map<String, dynamic> pilot, bool isWaiting) {
+    final primary = Theme.of(context).primaryColor;
+    final List<dynamic> times = pilot['times'] ?? [];
+    final lastTime = times.isNotEmpty ? formatMs(times.last as int) : "---";
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color:
+            isWaiting ? primary.withOpacity(0.1) : Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: isWaiting ? primary : Colors.transparent, width: 2),
+      ),
+      child: ListTile(
+        onTap: isAdmin
+            ? () {
+                if (esp32Connected) {
+                  setState(() => waitingPilotId = pilot['id']);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("ESP32 no conectado")));
+                }
+              }
+            : null,
+        title: Text(pilot['name'],
+            style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text("Último: $lastTime s • Total: ${times.length}",
+            style: const TextStyle(fontSize: 12)),
+        trailing: isWaiting
+            ? const Icon(Icons.sync, color: Colors.green)
+            : const Icon(Icons.timer_outlined),
+      ),
+    );
+  }
+
+  void _showConfirmRandomTimes() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("TIEMPOS ALEATORIOS",
+            style: GoogleFonts.orbitron(
+                fontSize: 14, fontWeight: FontWeight.bold)),
+        content: const Text(
+            "¿Generar 10 tiempos falsos para todos los pilotos activos?"),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("CANCELAR")),
+          ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                insertRandomTimes();
+              },
+              child: const Text("GENERAR")),
+        ],
+      ),
+    );
+  }
+
+  void _showQuickSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("SESIÓN RÁPIDA",
+                style: GoogleFonts.orbitron(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.add_location_alt_outlined),
+              title: const Text("Crear Nueva Ubicación"),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showCreateLocationDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_to_photos_outlined),
+              title: const Text("Crear Nueva Sesión"),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showCreateSessionPopup();
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
