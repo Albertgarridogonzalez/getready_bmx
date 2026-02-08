@@ -8,17 +8,15 @@ import 'package:getready_bmx/screens/live_screen.dart';
 import 'package:getready_bmx/screens/leaderboard_screen.dart';
 import 'package:getready_bmx/screens/settings_screen.dart';
 import 'package:getready_bmx/screens/records_screen.dart';
-import 'package:getready_bmx/widgets/bottom_nav.dart';
 import 'package:getready_bmx/providers/theme_provider.dart'; // Importa el ThemeProvider
 import 'firebase_options.dart';
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-  //options: DefaultFirebaseOptions.currentPlatform,
-  options: DefaultFirebaseOptions.currentPlatform,
-);
+    //options: DefaultFirebaseOptions.currentPlatform,
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   runApp(MyApp());
 }
@@ -40,7 +38,9 @@ class MyApp extends StatelessWidget {
             routes: {
               '/': (context) => Consumer<AuthProvider>(
                     builder: (context, auth, _) {
-                      return auth.isAuthenticated ? HomeScreen() : LoginScreen();
+                      return auth.isAuthenticated
+                          ? HomeScreen()
+                          : LoginScreen();
                     },
                   ),
               '/home': (context) => HomeScreen(),

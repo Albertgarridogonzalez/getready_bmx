@@ -33,10 +33,20 @@ class AuthService {
         password: password,
       );
 
+      // Convert list of strings to list of maps with unique IDs
+      int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
+      List<Map<String, dynamic>> pilotsData = [];
+      for (var i = 0; i < pilots.length; i++) {
+        pilotsData.add({
+          'id': '${baseTimestamp}_$i',
+          'name': pilots[i],
+        });
+      }
+
       // Guarda en Firestore con el rol indicado
       await _db.collection('users').doc(result.user!.uid).set({
         'email': email,
-        'pilots': pilots,
+        'pilots': pilotsData,
         'role': role, // Puede ser 'trainer' o 'user'
       });
 

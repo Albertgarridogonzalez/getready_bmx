@@ -1,10 +1,11 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:getready_bmx/providers/auth_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:getready_bmx/providers/theme_provider.dart';
+import 'package:getready_bmx/services/ble_service.dart';
+import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 
 class SettingsScreen extends StatefulWidget {
   @override
@@ -28,6 +29,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _selectedSessionId; // ID de la sesión elegida
   String? _selectedPilotId; // ID del piloto elegido dentro de esa sesión
   final TextEditingController _editTimeController = TextEditingController();
+
+  // BLE
+  final BleService _bleService = BleService();
+  bool _isScanningBle = false;
+  List<DiscoveredDevice> _discoveredDevices = [];
+  final TextEditingController _bleSsidController = TextEditingController();
+  final TextEditingController _blePassController = TextEditingController();
+  final TextEditingController _bleDeviceIdController = TextEditingController();
+
+  String? _role; // Para guardar el rol de la base de datos
 
   @override
   void initState() {
@@ -72,6 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _pilotControllers = _pilots.map((pilot) {
           return TextEditingController(text: pilot['name']?.toString() ?? '');
         }).toList();
+        _role = data['role']; // Guardamos el rol (Admin, trainer, user...)
       });
 
       // Carga de opciones de tema (no relacionado con los pilotos)
@@ -780,6 +792,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showBleConfigPopup() async {
+    bool hasPerms = await _bleService.requestPermissions();
+    if (!hasPerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Faltan permisos de Bluetooth/Ubicación')),
+      );
+      return;
+    }
+
+    _discoveredDevices.clear();
+    _bleSsidController.text = "ALOHA_TERRAZA";
+    _blePassController.text = "LuaAragorn68";
+    _bleDeviceIdController.text = "esp32_bmx_1";
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateSB) {
+            return AlertDialog(
+              title: Text('Configurar ESP32 (BLE)'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                        "Paso 1: Buscar dispositivo (Recuerda reiniciar el ESP32)"),
+                    SizedBox(height: 10),
+                    if (_isScanningBle) CircularProgressIndicator(),
+                    if (!_isScanningBle)
+                      ElevatedButton(
+                        onPressed: () {
+                          setStateSB(() => _isScanningBle = true);
+                          _bleService.startScan((device) {
+                            if (!_discoveredDevices
+                                .any((d) => d.id == device.id)) {
+                              setStateSB(() {
+                                _discoveredDevices.add(device);
+                              });
+                            }
+                          });
+                        },
+                        child: Text("Escanear (30s config mode)"),
+                      ),
+                    ..._discoveredDevices.map((d) => ListTile(
+                          title:
+                              Text(d.name.isNotEmpty ? d.name : "Sin nombre"),
+                          subtitle: Text(d.id),
+                          onTap: () {
+                            _bleService.stopScan();
+                            setStateSB(() {
+                              _isScanningBle = false;
+                              _selectedPilotId = d
+                                  .id; // Reutilizamos variable o usamos una nueva
+                            });
+                          },
+                          trailing: _selectedPilotId == d.id
+                              ? Icon(Icons.check, color: Colors.green)
+                              : null,
+                        )),
+                    Divider(),
+                    Text("Paso 2: Datos WiFi"),
+                    TextField(
+                        controller: _bleSsidController,
+                        decoration: InputDecoration(labelText: 'SSID WiFi')),
+                    TextField(
+                        controller: _blePassController,
+                        decoration:
+                            InputDecoration(labelText: 'Password WiFi')),
+                    TextField(
+                        controller: _bleDeviceIdController,
+                        decoration:
+                            InputDecoration(labelText: 'ID Dispositivo')),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: _selectedPilotId == null
+                      ? null
+                      : () async {
+                          await _bleService.sendConfig(
+                            deviceAddress: _selectedPilotId!,
+                            ssid: _bleSsidController.text,
+                            password: _blePassController.text,
+                            esp32Id: _bleDeviceIdController.text,
+                          );
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text(
+                                    'Configuración enviada. El ESP32 se reiniciará.')),
+                          );
+                        },
+                  child: Text('Enviar Config'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _deletePilotFromUser(String userId, String pilotId) async {
     DocumentReference userRef =
         FirebaseFirestore.instance.collection('users').doc(userId);
@@ -831,8 +950,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
-    final bool isAdmin =
-        user?.email == '1@1.1' || user?.email == 'admin@admin.com';
+    final bool isAdmin = user?.email == '1@1.1' ||
+        user?.email == 'admin@admin.com' ||
+        _role == 'Admin';
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -930,6 +1050,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _showDeletePilotsPopup();
                         } else if (value == 'asignar') {
                           _showAssignPilotsToTrainerPopup();
+                        } else if (value == 'ble') {
+                          _showBleConfigPopup();
                         }
                       },
                       itemBuilder: (BuildContext context) =>
@@ -949,6 +1071,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         PopupMenuItem<String>(
                           value: 'asignar',
                           child: Text('Asignar Pilotos a Trainer'),
+                        ),
+                        PopupMenuItem<String>(
+                          value: 'ble',
+                          enabled: !kIsWeb,
+                          child: Text(kIsWeb
+                              ? 'Configurar ESP32 (Solo en Móvil)'
+                              : 'Configurar ESP32 (BLE)'),
                         ),
                       ],
                     ),
