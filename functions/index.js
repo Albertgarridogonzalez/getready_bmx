@@ -81,57 +81,99 @@ exports.bmxRaceTiming = onRequest({ cors: true }, async (req, res) => {
     }
 
     // 1. Buscar Piloto por RFID
+    let userId = null;
+    let pilotName = "Desconocido";
+
     const idxSnap = await admin.firestore().doc(`rfidIndex/${rfid}`).get();
-    if (!idxSnap.exists) {
-      console.warn(`⚠️ RFID no registrado: ${rfid}`);
-      return res.status(404).send(`Corredor con RFID ${rfid} no identificado`);
+    if (idxSnap.exists) {
+      const data = idxSnap.data();
+      userId = data.userId;
+      pilotName = data.pilotName;
+      console.log(`✅ Piloto encontrado en índice: ${pilotName} (${userId})`);
+    } else {
+      // Fallback: Buscar en la colección de usuarios
+      console.log(`🔍 RFID ${rfid} no en índice. Buscando en todos los usuarios (dentro de pilots[])...`);
+      const usersSnap = await admin.firestore().collection("users").get();
+
+      let userDoc = null;
+      for (const doc of usersSnap.docs) {
+        const data = doc.data();
+        // Tu esquema tiene el rfid dentro de users -> pilots[] -> rfid
+        if (Array.isArray(data.pilots)) {
+          const p = data.pilots.find(x => x.rfid === rfid);
+          if (p) {
+            userDoc = doc;
+            pilotName = p.name || data.pilotName || "Piloto";
+            break;
+          }
+        }
+        // Por si acaso estuviera fuera
+        if (data.rfid === rfid) {
+          userDoc = doc;
+          pilotName = data.pilotName || data.name || "Piloto";
+          break;
+        }
+      }
+
+      if (userDoc) {
+        userId = userDoc.id;
+        console.log(`✅ Usuario encontrado en DB: ${userId} (${pilotName})`);
+
+        // Crear el índice para la próxima vez
+        await admin.firestore().doc(`rfidIndex/${rfid}`).set({
+          userId: userId,
+          pilotName: pilotName,
+          rfid: rfid,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`📝 Índice rfidIndex/${rfid} creado para ${pilotName}`);
+      } else {
+        console.warn(`❌ RFID ${rfid} no encontrado en ningún usuario (ni en el array de pilotos).`);
+        return res.status(404).send(`Corredor con RFID ${rfid} no identificado en la base de datos de pilotos`);
+      }
     }
 
-    const { userId, pilotName } = idxSnap.data();
-
     // 2. Buscar Sesión Activa o por nombre
-    // Ahora usamos el deviceName enviado para buscar la sesión de hoy.
-    // Si no se envía deviceName o no se encuentra la sesión, fall back a la sesión con active=true
     let sessionSnap = null;
     let sessionId = null;
     let sessionRef = null;
 
     if (deviceId) {
-      // Buscar una sesión de hoy con este location (deviceName)
       const now = new Date();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      // Buscamos sesiones en las últimas 24 horas para este dispositivo
+      const yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
 
       const sessionsQuery = await admin.firestore().collection("sessions")
-        .where("location", "==", deviceId) // usamos el nombre configurado como location
-        .where("date", ">=", startOfDay)
-        .where("date", "<", endOfDay)
+        .where("location", "==", deviceId)
+        .where("date", ">=", yesterday)
         .limit(1).get();
 
       if (!sessionsQuery.empty) {
         sessionSnap = sessionsQuery.docs[0];
         sessionId = sessionSnap.id;
         sessionRef = sessionSnap.ref;
+        console.log(`📍 Sesión encontrada por ubicación (${deviceId}): ${sessionId}`);
       }
     }
 
-    if (!sessionSnap) {
-      // Intentar encontrar sesión activa global
-      const activeSessionsQuery = await admin.firestore().collection("sessions")
-        .where("active", "==", true).limit(1).get();
-      if (!activeSessionsQuery.empty) {
-        sessionSnap = activeSessionsQuery.docs[0];
-        sessionId = sessionSnap.id;
-        sessionRef = sessionSnap.ref;
-      }
+    let sessionData = null;
+    if (sessionSnap) {
+      sessionData = sessionSnap.data();
+    } else {
+      console.log(`🆕 No hay sesión activa. Creando sesión de emergencia para: ${deviceId || "Mataró Gates"}`);
+      sessionData = {
+        location: deviceId || "Mataró Gates",
+        distance: 0,
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        pilots: [],
+        active: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      sessionRef = await admin.firestore().collection("sessions").add(sessionData);
+      sessionId = sessionRef.id;
     }
 
-    if (!sessionSnap) {
-      return res.status(404).send("No hay ninguna sesión activa en el sistema para registrar el tiempo");
-    }
-
-    const session = sessionSnap.data();
-    const pilots = Array.isArray(session.pilots) ? session.pilots : [];
+    const pilots = Array.isArray(sessionData.pilots) ? sessionData.pilots : [];
 
     // 3. Buscar el piloto en la sesión
     const pIdx = pilots.findIndex((p) => p.id === userId || p.id.endsWith(`_${userId}`));
@@ -182,18 +224,19 @@ exports.startBmxSession = onRequest({ cors: true }, async (req, res) => {
 
     const db = admin.firestore();
 
-    // Buscar si ya existe hoy para este deviceName
+    // Buscar si ya existe recientemente para este deviceName (últimas 12 horas)
+    const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
+
     const sessionsQuery = await db.collection("sessions")
       .where("location", "==", deviceName)
-      .where("date", ">=", startOfDay)
-      .where("date", "<", endOfDay)
+      .where("date", ">=", twelveHoursAgo)
       .limit(1).get();
 
     if (!sessionsQuery.empty) {
-      // Desactivar las demás y activar esta? 
-      // Si la app usa 'active', la marcamos
       const sessionId = sessionsQuery.docs[0].id;
+      console.log(`♻️ Reutilizando sesión: ${sessionId}`);
 
+      // Desactivar las demás y activar esta
       const allActive = await db.collection("sessions").where("active", "==", true).get();
       const batch = db.batch();
       for (const doc of allActive.docs) {
@@ -207,6 +250,7 @@ exports.startBmxSession = onRequest({ cors: true }, async (req, res) => {
       return res.status(200).send({ ok: true, sessionId, message: "Sesión existente cargada" });
     }
 
+    console.log(`🆕 Creando nueva sesión para ${deviceName}`);
     // Crear nueva
     const allActive = await db.collection("sessions").where("active", "==", true).get();
     const batch = db.batch();

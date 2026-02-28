@@ -367,6 +367,11 @@ void pumpReader() {
 // ================== SETUP / LOOP ==================
 void setup() {
   Serial.begin(115200);
+  delay(1000); // Dar tiempo al Serial Monitor
+  Serial.println("\n\n######################################");
+  Serial.println("🏁 BMX RACE TIMING SYSTEM STARTING...");
+  Serial.println("######################################\n");
+
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
   
   esp_task_wdt_config_t twdt_config = {
@@ -425,15 +430,15 @@ void loop() {
   static bool initialized = false;
   if (!initialized) {
     initialized = true;
-    // --- Intento de Conexión WiFi ---
+    Serial.println("⚙️ Cargando configuración de NVS...");
     preferences.begin("wifi_config", true);
     wifi_ssid = preferences.getString("ssid", DEFAULT_WIFI_SSID);
     wifi_pass = preferences.getString("pass", DEFAULT_WIFI_PASS);
     device_name = preferences.getString("device_name", DEFAULT_DEVICE_NAME);
     preferences.end();
     
-    // Si no se usó loadDeviceIdFromNVS en setup(), cargamos ahora
     loadDeviceIdFromNVS();
+    Serial.printf("📋 Dispositivo: %s | ID: %s\n", device_name.c_str(), device_id.c_str());
 
     Serial.printf("🌐 Intentando WiFi: %s\n", wifi_ssid.c_str());
     WiFi.begin(wifi_ssid.c_str(), wifi_pass.c_str());
@@ -449,12 +454,17 @@ void loop() {
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println("\n✅ WiFi Conectado!");
       syncTimeNTP();
+      Serial.println("📡 Intentando crear sesión vía WiFi...");
       initSessionFirebase();
     } else {
       Serial.println("\n⚠️ WiFi Fallido. Intentando con SIM...");
       usaSIM = detectarSIM();
       if (usaSIM && conectarGPRS()) {
+        Serial.println("📡 Intentando crear sesión vía SIM...");
         initSessionFirebase();
+      } else {
+        Serial.println("❌ Error: No se pudo establecer NINGUNA conexión (WiFi ni SIM).");
+        Serial.println("⚠️ La sesión NO se ha creado en Firebase. Los tiempos se subirán cuando haya conexión.");
       }
     }
     
