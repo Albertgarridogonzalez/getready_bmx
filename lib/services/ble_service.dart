@@ -43,6 +43,7 @@ class BleService {
     required String ssid,
     required String password,
     required String esp32Id,
+    required String deviceName,
   }) async {
     final characteristic = QualifiedCharacteristic(
       serviceId: Uuid.parse(serviceUuid),
@@ -54,6 +55,7 @@ class BleService {
       "ssid": ssid,
       "password": password,
       "esp32Id": esp32Id,
+      "deviceName": deviceName,
     });
 
     final List<int> data = utf8.encode(json);

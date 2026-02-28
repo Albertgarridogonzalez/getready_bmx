@@ -38,6 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _bleSsidController = TextEditingController();
   final TextEditingController _blePassController = TextEditingController();
   final TextEditingController _bleDeviceIdController = TextEditingController();
+  final TextEditingController _bleDeviceNameController =
+      TextEditingController();
 
   String? _role; // Para guardar el rol de la base de datos
 
@@ -805,7 +807,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _discoveredDevices.clear();
     _bleSsidController.text = "ALOHA_TERRAZA";
     _blePassController.text = "LuaAragorn68";
-    _bleDeviceIdController.text = "esp32_bmx_1";
+    _bleDeviceIdController.text = "BMX_RACE_TIMING";
+    _bleDeviceNameController.text = "Mataró Gates";
 
     showDialog(
       context: context,
@@ -898,6 +901,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 12),
                     _buildBleTextField(_bleDeviceIdController, "ID Dispositivo",
                         Icons.fingerprint),
+                    const SizedBox(height: 12),
+                    _buildBleTextField(_bleDeviceNameController,
+                        "Nombre de Sesión", Icons.badge),
                   ],
                 ),
               ),
@@ -917,6 +923,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ssid: _bleSsidController.text,
                             password: _blePassController.text,
                             esp32Id: _bleDeviceIdController.text,
+                            deviceName: _bleDeviceNameController.text,
                           );
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
