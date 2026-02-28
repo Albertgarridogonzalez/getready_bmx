@@ -52,10 +52,9 @@ const char* BMX_FUNCTION_URL = "https://us-central1-getready-bmx.cloudfunctions.
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
-const unsigned long BLE_TIMEOUT_MS = 30000;
+const unsigned long BLE_TIMEOUT_MS = 20000;
 bool bleActive = true;
 bool deviceConnected = false;
-bool bleFinished = false;
 
 BLEServer* pServer = nullptr;
 BLECharacteristic* pCharacteristic = nullptr;
@@ -223,10 +222,13 @@ void initBLE() {
   pCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
   pCharacteristic->setCallbacks(new BLECallbacksCharacteristic());
   pService->start();
+  
   BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->start();
-  Serial.println("🔵 Modo de configuración BLE activo (30s)");
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06); // Funciones de discoverability de ESP32
+  BLEDevice::startAdvertising();
+  Serial.println("🔵 Modo de configuración BLE activo (20s) - Escaneando y conectando WiFi al mismo tiempo...");
 }
 
 // ================== BMX UPLOAD ==================
@@ -299,13 +301,17 @@ void uploadRaceResults() {
 // ================== RFID LOGIC ==================
 void handleRaceEPC(const String& epc, int rssi) {
   if (!raceActive) return;
+  
+  // Imprimir todas las detecciones para poder debuggear en el Serial (como pediste)
+  Serial.printf("📡 LEÍDO -> EPC: %s | RSSI: %d dBm | ⏱️ T+%lu ms\n", epc.c_str(), rssi, millis() - raceStartTime);
+
   TagData& data = sessionTags[epc];
   
-  // Si encontramos un RSSI más fuerte, guardamos ese momento como el cruce
+  // Si es la primera vez (0) o si encontramos un RSSI más fuerte (más cercano a positivo), guardamos ese momento
   if (data.rssi == 0 || rssi > data.rssi) {
     data.rssi = rssi;
     data.bestMs = millis() - raceStartTime;
-    Serial.printf("🚴 Tag %s | RSSI Máx: %d | ⏱️ T+%lu ms\n", epc.c_str(), rssi, data.bestMs);
+    Serial.printf("🏆 [NUEVO MÁXIMO] 🚴 Tag %s | RSSI Máx: %d dBm | ⏱️ T+%lu ms\n", epc.c_str(), rssi, data.bestMs);
   }
 }
 
@@ -324,15 +330,10 @@ void parseFrame(const uint8_t* f, int n) {
         char b[3]; sprintf(b, "%02X", d[6 + i]); epc += b;
       }
       
-      // Intentamos capturar el RSSI del byte siguiente si está disponible
-      // Algunos lectores Chafon añaden el RSSI como un byte extra al final del EPC
-      int rssi = 0;
-      if (dLen > (6 + epcLen)) {
-          rssi = d[6 + epcLen];
-      } else {
-          // Si no detectamos RSSI real, asignamos un valor base para que pinte algo
-          rssi = 10; 
-      }
+      // El RSSI está en d[1] y d[2] (16 bits con signo complementario). Unidad 0.1dBm.
+      int16_t rawRssi = (d[1] << 8) | d[2];
+      int rssi = rawRssi / 10; // Convertir a dBm enteros (ej. -440 -> -44 dBm)
+      
       handleRaceEPC(epc, rssi);
     }
   }
@@ -413,13 +414,13 @@ void loop() {
   esp_task_wdt_reset();
 
   if (bleActive && millis() > BLE_TIMEOUT_MS) {
-    BLEDevice::deinit(true);
-    esp_bt_controller_disable();
-    bleActive = false;
-    bleFinished = true;
+    if (!deviceConnected) {
+        Serial.println("🔴 Apagando BLE por timeout (20s)...");
+        BLEDevice::deinit(true);
+        esp_bt_controller_disable();
+        bleActive = false;
+    }
   }
-
-  if (!bleFinished) { delay(10); return; }
 
   static bool initialized = false;
   if (!initialized) {
