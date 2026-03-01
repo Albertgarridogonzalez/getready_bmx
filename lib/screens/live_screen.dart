@@ -10,9 +10,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:getready_bmx/providers/auth_provider.dart';
 // import 'package:flutter/foundation.dart';
 
-/// Convierte milisegundos (int) a un String con segundos y 3 decimales.
+/// Convierte milisegundos (int o String) a un String con segundos y 3 decimales.
 /// Ej: 4590 ms -> "4.590", 34578 ms -> "34.578"
-String formatMs(int ms) {
+String formatMs(dynamic msInput) {
+  int ms = 0;
+  if (msInput is num) {
+    ms = msInput.toInt();
+  } else if (msInput is String) {
+    ms = int.tryParse(msInput) ?? 0;
+  }
   double seconds = ms / 1000.0;
   return seconds.toStringAsFixed(3);
 }
@@ -56,7 +62,7 @@ class _LiveScreenState extends State<LiveScreen> {
   Timer? reconnectTimer;
   bool debugActive = true; // Variable para activar/desactivar mensajes de debug
   String?
-      expandedPilotId; // Para rastrear qué piloto tiene los tiempos expandidos
+      expandedPilotName; // Para rastrear qué piloto tiene los tiempos expandidos
 
   @override
   void initState() {
@@ -494,14 +500,64 @@ class _LiveScreenState extends State<LiveScreen> {
 
     Map<String, dynamic> sessionData =
         sessionSnapshot.data()! as Map<String, dynamic>;
+    String pilotName = "";
     List<dynamic> updatedPilots = sessionData['pilots'].map((pilot) {
       final pilotMap = pilot as Map<String, dynamic>;
       if (pilotMap['id'] == pilotId) {
         pilotMap['times'] = (pilotMap['times'] ?? [])..add(time);
+        pilotName = pilotMap['name'];
       }
       return pilotMap;
     }).toList();
-    sessionRef.update({'pilots': updatedPilots});
+    await sessionRef.update({'pilots': updatedPilots});
+
+    if (pilotName.isNotEmpty && sessionData['location'] != null) {
+      _updateLeaderboard(sessionData['location'], pilotName, time);
+    }
+  }
+
+  Future<void> _updateLeaderboard(
+      String location, String pilotName, int time) async {
+    final String docId =
+        location.toLowerCase().trim().replaceAll(RegExp(r'\s+'), '_');
+    final leaderboardRef =
+        FirebaseFirestore.instance.collection('leaderboards').doc(docId);
+
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(leaderboardRef);
+
+      if (!snapshot.exists) {
+        transaction.set(leaderboardRef, {
+          'location': location,
+          'records': [
+            {'name': pilotName, 'time': time}
+          ]
+        });
+        return;
+      }
+
+      Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
+      List<dynamic> records = List.from(data['records'] ?? []);
+
+      int existingIndex = records.indexWhere((r) => r['name'] == pilotName);
+
+      if (existingIndex != -1) {
+        if (time < records[existingIndex]['time']) {
+          records[existingIndex]['time'] = time;
+        } else {
+          return; // No es mejor tiempo
+        }
+      } else {
+        records.add({'name': pilotName, 'time': time});
+      }
+
+      records.sort((a, b) => (a['time'] as int).compareTo(b['time'] as int));
+      if (records.length > 20) {
+        records = records.sublist(0, 20);
+      }
+
+      transaction.update(leaderboardRef, {'records': records});
+    });
   }
 
   /// Inserta 10 tiempos aleatorios entre 1500 ms y 3000 ms para cada piloto activo
@@ -530,6 +586,23 @@ class _LiveScreenState extends State<LiveScreen> {
     }
 
     await sessionRef.update({'pilots': pilots});
+
+    // Actualizar leaderboards para cada piloto
+    if (sessionData['location'] != null) {
+      for (var p in pilots) {
+        final pilot = p as Map<String, dynamic>;
+        if (pilot['active'] == true &&
+            pilot['times'] != null &&
+            pilot['times'].isNotEmpty) {
+          int bestTime = (pilot['times'] as List).map((e) {
+            if (e is num) return e.toInt();
+            if (e is String) return int.tryParse(e) ?? 999999;
+            return 999999;
+          }).reduce((a, b) => a < b ? a : b);
+          _updateLeaderboard(sessionData['location'], pilot['name'], bestTime);
+        }
+      }
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
           content: Text("Tiempos aleatorios insertados exitosamente"),
@@ -577,8 +650,8 @@ class _LiveScreenState extends State<LiveScreen> {
 
             if (currentSessionId != null || !isAdmin) ...[
               const SizedBox(height: 20),
-              _buildSessionInfoCard(primary, isAdmin),
-              const SizedBox(height: 20),
+              // _buildSessionInfoCard(primary, isAdmin),
+              // const SizedBox(height: 20),
               Expanded(
                 child: isAdmin
                     ? _buildAdminPilotsMonitoring(currentSessionId!)
@@ -688,16 +761,30 @@ class _LiveScreenState extends State<LiveScreen> {
   } */
 
   Widget _buildSessionSelector() {
+    DateTime now = DateTime.now();
+    DateTime yesterday = now.subtract(const Duration(days: 1));
+    DateTime yesterdayStart =
+        DateTime(yesterday.year, yesterday.month, yesterday.day);
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('sessions')
+          .where('date', isGreaterThanOrEqualTo: yesterdayStart)
           .orderBy('date', descending: true)
-          .limit(5)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const LinearProgressIndicator();
         var docs = snapshot.data!.docs;
         if (docs.isEmpty) return const Text("No hay sesiones");
+
+        // Auto-seleccionar si solo hay una sesión y ninguna seleccionada
+        if (docs.length == 1 && currentSessionId == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && currentSessionId == null) {
+              _activateSession(docs.first.id);
+            }
+          });
+        }
 
         final primary = Provider.of<ThemeProvider>(context).primaryColor;
         return Container(
@@ -768,7 +855,7 @@ class _LiveScreenState extends State<LiveScreen> {
     }
   }
 
-  Widget _buildSessionInfoCard(Color primary, bool isAdmin) {
+  /* Widget _buildSessionInfoCard(Color primary, bool isAdmin) {
     if (!isAdmin) {
       // Logic for fetching active session for non-admin already exists?
       // Need a StreamBuilder here for the user to see the REAL active session.
@@ -819,7 +906,7 @@ class _LiveScreenState extends State<LiveScreen> {
         ],
       ),
     );
-  }
+  } */
 
   Widget _buildAdminPilotsMonitoring(String sessionId) {
     return StreamBuilder<DocumentSnapshot>(
@@ -831,8 +918,9 @@ class _LiveScreenState extends State<LiveScreen> {
         if (!snapshot.hasData || !snapshot.data!.exists)
           return const Center(child: CircularProgressIndicator());
         var data = snapshot.data!.data() as Map<String, dynamic>;
-        List<dynamic> activePilots =
-            (data['pilots'] ?? []).where((p) => p['active'] == true).toList();
+
+        List<Map<String, dynamic>> activePilots =
+            _getGroupedPilots(data['pilots'] ?? []);
 
         return ListView.builder(
           itemCount: activePilots.length,
@@ -846,6 +934,35 @@ class _LiveScreenState extends State<LiveScreen> {
     );
   }
 
+  List<Map<String, dynamic>> _getGroupedPilots(List<dynamic> allPilots) {
+    Map<String, Map<String, dynamic>> grouped = {};
+    for (var p in allPilots) {
+      if (p == null) continue;
+      final pilotMap = p as Map<String, dynamic>;
+
+      String name = pilotMap['name'] ?? 'Sin nombre';
+      if (grouped.containsKey(name)) {
+        List<dynamic> existingTimes = List.from(grouped[name]!['times'] ?? []);
+        List<dynamic> newTimes = List.from(pilotMap['times'] ?? []);
+        existingTimes.addAll(newTimes);
+        grouped[name]!['times'] = existingTimes;
+
+        if (grouped[name]!['id'] != null &&
+            (grouped[name]!['id'] as String).startsWith("auto_") &&
+            pilotMap['id'] != null &&
+            !(pilotMap['id'] as String).startsWith("auto_")) {
+          grouped[name]!['id'] = pilotMap['id'];
+        }
+      } else {
+        grouped[name] = Map<String, dynamic>.from(pilotMap);
+        grouped[name]!['id'] ??= 'no_id_${name}';
+      }
+    }
+    var list = grouped.values.toList();
+    list.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+    return list;
+  }
+
   Widget _buildUserActiveSessionMonitoring() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -857,8 +974,9 @@ class _LiveScreenState extends State<LiveScreen> {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
           return const Center(child: Text("Esperando sesión activa..."));
         var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-        List<dynamic> activePilots =
-            (data['pilots'] ?? []).where((p) => p['active'] == true).toList();
+
+        List<Map<String, dynamic>> activePilots =
+            _getGroupedPilots(data['pilots'] ?? []);
 
         return ListView.builder(
           itemCount: activePilots.length,
@@ -872,12 +990,11 @@ class _LiveScreenState extends State<LiveScreen> {
   Widget _buildPilotLiveCard(Map<String, dynamic> pilot, bool isWaiting) {
     final primary = Theme.of(context).primaryColor;
     final List<dynamic> times = pilot['times'] ?? [];
-    final lastTime = times.isNotEmpty ? formatMs(times.last as int) : "---";
+    final lastTime = times.isNotEmpty ? formatMs(times.last) : "---";
 
-    final bool isExpanded = pilot['id'] == expandedPilotId;
+    final bool isExpanded = pilot['name'] == expandedPilotName;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color:
@@ -891,10 +1008,10 @@ class _LiveScreenState extends State<LiveScreen> {
           ListTile(
             onTap: () {
               setState(() {
-                if (expandedPilotId == pilot['id']) {
-                  expandedPilotId = null;
+                if (expandedPilotName == pilot['name']) {
+                  expandedPilotName = null;
                 } else {
-                  expandedPilotId = pilot['id'];
+                  expandedPilotName = pilot['name'];
                 }
               });
             },
@@ -916,42 +1033,59 @@ class _LiveScreenState extends State<LiveScreen> {
               ],
             ),
           ),
-          if (isExpanded && times.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: times
-                    .map((t) => Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: primary.withOpacity(0.2)),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: isExpanded
+                ? (times.isNotEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: times
+                                .map<Widget>((t) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: primary.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                            color: primary.withOpacity(0.2)),
+                                      ),
+                                      child: Text(
+                                        "${formatMs(t)}s",
+                                        style: GoogleFonts.orbitron(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: primary,
+                                        ),
+                                      ),
+                                    ))
+                                .toList(),
                           ),
+                        ),
+                      )
+                    : const Padding(
+                        padding: EdgeInsets.only(bottom: 16),
+                        child: SizedBox(
+                          width: double.infinity,
                           child: Text(
-                            "${formatMs(t as int)}s",
-                            style: GoogleFonts.orbitron(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: primary,
+                            "Sin tiempos registrados",
+                            style: TextStyle(
+                              fontStyle: FontStyle.italic,
+                              color: Colors.grey,
+                              fontSize: 12,
                             ),
+                            textAlign: TextAlign.center,
                           ),
-                        ))
-                    .toList(),
-              ),
-            ),
-          if (isExpanded && times.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16),
-              child: Text("Sin tiempos registrados",
-                  style: TextStyle(
-                      fontStyle: FontStyle.italic,
-                      color: Colors.grey,
-                      fontSize: 12)),
-            ),
+                        ),
+                      ))
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );

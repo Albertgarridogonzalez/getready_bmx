@@ -62,6 +62,40 @@ exports.ingestRfid = onRequest({ cors: true }, async (req, res) => {
         lastDeviceId: deviceId || null,
         lastStartTs: start_ts,
       });
+
+      // Actualizar Leaderboard para los mejores tiempos del lote
+      const location = deviceId || "Mataró Gates";
+      const docId = location.toLowerCase().trim().replace(/\s+/g, '_');
+      const leaderboardRef = admin.firestore().collection("leaderboards").doc(docId);
+
+      for (const [userId, times] of Object.entries(toAppend)) {
+        const bestTime = Math.min(...times);
+        const p = pilots.find(p => p.id === userId);
+        const pName = p ? p.name : "Piloto";
+
+        try {
+          await admin.firestore().runTransaction(async (transaction) => {
+            const lbSnap = await transaction.get(leaderboardRef);
+            let records = lbSnap.exists ? (lbSnap.data().records || []) : [];
+            const rIdx = records.findIndex(r => r.name === pName);
+
+            if (rIdx >= 0) {
+              if (bestTime < records[rIdx].time) {
+                records[rIdx].time = bestTime;
+                records[rIdx].updatedAt = Date.now();
+              } else return;
+            } else {
+              records.push({ name: pName, time: bestTime, updatedAt: Date.now() });
+            }
+
+            records.sort((a, b) => a.time - b.time);
+            if (records.length > 20) records = records.slice(0, 20);
+            transaction.set(leaderboardRef, { location, records, lastUpdate: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+          });
+        } catch (e) {
+          console.error("Leaderboard error in ingestRfid:", e);
+        }
+      }
     }
 
     return res.status(200).send({ ok: true, appended: Object.keys(toAppend).length });
@@ -167,18 +201,30 @@ exports.bmxRaceTiming = onRequest({ cors: true }, async (req, res) => {
 
     // 3. Actualizar Piloto en Sesión
     const pilots = Array.isArray(sessionData.pilots) ? sessionData.pilots : [];
-    const pIdx = pilots.findIndex((p) => p.id === userId || p.id === `auto_${userId}`);
+
+    // Intentar encontrar al piloto en la sesión (por su ID real de usuario o ID automático)
+    let pIdx = pilots.findIndex((p) => p.id === userId || p.id === `auto_${userId}`);
+
+    // Si no se encuentra, buscar por nombre (como respaldo)
+    if (pIdx < 0) {
+      pIdx = pilots.findIndex((p) => p.name === pilotName);
+    }
 
     if (pIdx < 0) {
+      // Si sigue sin encontrarse, creamos uno automático
+      const newId = `auto_${userId}`;
       pilots.push({
-        id: `auto_${userId}`,
+        id: newId,
         name: pilotName,
         times: [t_ms],
         active: true
       });
     } else {
+      // Si se encuentra, actualizamos su ID si era parcial y añadimos el tiempo
       if (!Array.isArray(pilots[pIdx].times)) pilots[pIdx].times = [];
       pilots[pIdx].times.push(t_ms);
+      // Aseguramos que el nombre esté actualizado
+      pilots[pIdx].name = pilotName;
     }
 
     await sessionRef.update({
@@ -186,6 +232,58 @@ exports.bmxRaceTiming = onRequest({ cors: true }, async (req, res) => {
       lastIngestAt: admin.firestore.FieldValue.serverTimestamp(),
       lastDeviceId: deviceId || "unknown"
     });
+
+    // 4. Actualizar Leaderboard (Ranking Histórico)
+    const location = deviceId || "Mataró Gates";
+    const docId = location.toLowerCase().trim().replace(/\s+/g, '_');
+    console.log(`🏆 Intentando actualizar leaderboard: ${docId} (Pista: ${location})`);
+
+    const leaderboardRef = admin.firestore().collection("leaderboards").doc(docId);
+
+    try {
+      await admin.firestore().runTransaction(async (transaction) => {
+        const lbSnap = await transaction.get(leaderboardRef);
+        let records = [];
+
+        if (lbSnap.exists) {
+          records = lbSnap.data().records || [];
+          console.log(`📊 Leaderboard existente encontrado con ${records.length} registros`);
+        } else {
+          console.log(`🆕 Creando nuevo leaderboard para ${docId}`);
+        }
+
+        const rIdx = records.findIndex(r => r.name === pilotName);
+        if (rIdx >= 0) {
+          if (t_ms < records[rIdx].time) {
+            console.log(`⭐ ¡Nuevo récord personal para ${pilotName}! ${records[rIdx].time} -> ${t_ms}`);
+            records[rIdx].time = t_ms;
+            records[rIdx].updatedAt = Date.now();
+          } else {
+            console.log(`ℹ️ El tiempo ${t_ms} no supera el récord de ${pilotName} (${records[rIdx].time})`);
+            return;
+          }
+        } else {
+          console.log(`➕ Añadiendo primer registro para ${pilotName} con ${t_ms}ms`);
+          records.push({
+            name: pilotName,
+            time: t_ms,
+            updatedAt: Date.now()
+          });
+        }
+
+        records.sort((a, b) => a.time - b.time);
+        if (records.length > 20) records = records.slice(0, 20);
+
+        transaction.set(leaderboardRef, {
+          location: location,
+          records: records,
+          lastUpdate: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        console.log(`✅ Leaderboard ${docId} actualizado con éxito.`);
+      });
+    } catch (lbError) {
+      console.error("❌ Error actualizando leaderboard:", lbError);
+    }
 
     return res.status(200).send({ ok: true, pilot: pilotName, time_added: t_ms });
 

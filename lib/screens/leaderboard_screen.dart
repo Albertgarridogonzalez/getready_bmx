@@ -4,7 +4,13 @@ import 'package:provider/provider.dart';
 import 'package:getready_bmx/providers/theme_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-String formatMs(int ms) {
+String formatMs(dynamic msInput) {
+  int ms = 0;
+  if (msInput is num) {
+    ms = msInput.toInt();
+  } else if (msInput is String) {
+    ms = int.tryParse(msInput) ?? 0;
+  }
   double seconds = ms / 1000.0;
   return seconds.toStringAsFixed(3);
 }
@@ -19,60 +25,26 @@ class LeaderboardScreen extends StatelessWidget {
 
     return Scaffold(
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('sessions').snapshots(),
+        stream:
+            FirebaseFirestore.instance.collection('leaderboards').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-
-          Map<String, List<Map<String, dynamic>>> locationToPilots = {};
-          Map<String, int> locationToDistance = {};
-
-          if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-            for (var doc in snapshot.data!.docs) {
-              final data = doc.data() as Map<String, dynamic>;
-              final location = data['location'] ?? 'Sin ubicación';
-              final int distance = data['distance'] ?? 0;
-              final List<dynamic> pilots = data['pilots'] ?? [];
-
-              if (!locationToDistance.containsKey(location)) {
-                locationToDistance[location] = distance;
-              }
-
-              locationToPilots.putIfAbsent(location, () => []);
-
-              for (var pilotEntry in pilots) {
-                final pilotMap = pilotEntry as Map<String, dynamic>;
-                final String pilotName =
-                    pilotMap['name'] ?? 'Piloto sin nombre';
-                final List<dynamic> times = pilotMap['times'] ?? [];
-
-                final int bestTimePilot = times.isNotEmpty
-                    ? times.map((t) => t as int).reduce((a, b) => a < b ? a : b)
-                    : 999999;
-
-                locationToPilots[location]!.add({
-                  'name': pilotName,
-                  'bestTime': bestTimePilot,
-                });
-              }
-            }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text('No hay records registrados.'));
           }
 
-          locationToPilots.forEach((key, list) {
-            list.sort((a, b) =>
-                (a['bestTime'] as int).compareTo(b['bestTime'] as int));
-          });
-
-          final locationKeys = locationToPilots.keys.toList();
+          final leaderboardDocs = snapshot.data!.docs;
 
           return ListView.builder(
             padding: const EdgeInsets.only(bottom: 120, top: 20),
-            itemCount: locationKeys.length,
+            itemCount: leaderboardDocs.length,
             itemBuilder: (context, index) {
-              final loc = locationKeys[index];
-              final pilots = locationToPilots[loc]!.take(10).toList();
-              final distance = locationToDistance[loc] ?? 0;
+              final data =
+                  leaderboardDocs[index].data() as Map<String, dynamic>;
+              final String location = data['location'] ?? 'Sin ubicación';
+              final List<dynamic> records = data['records'] ?? [];
 
               return Container(
                 margin:
@@ -96,49 +68,27 @@ class LeaderboardScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                loc.toUpperCase(),
-                                style: GoogleFonts.orbitron(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: primary,
-                                ),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: primary.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                "${distance}M",
-                                style: GoogleFonts.orbitron(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: primary,
-                                ),
-                              ),
-                            ),
-                          ],
+                        Text(
+                          location.toUpperCase(),
+                          style: GoogleFonts.orbitron(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: primary,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         const Divider(height: 1),
                         const SizedBox(height: 16),
-                        ...pilots.asMap().entries.map((entry) {
+                        ...records.asMap().entries.map((entry) {
                           final i = entry.key;
-                          final pilot = entry.value;
-                          final bestTimeMs = pilot['bestTime'] ?? 999999;
+                          final record = entry.value;
+                          final int timeMs =
+                              (record['time'] as num?)?.toInt() ?? 999999;
 
                           return _LeaderboardRow(
                             rank: i + 1,
-                            name: pilot['name'],
-                            time: formatMs(bestTimeMs),
+                            name: record['name'] ?? 'Piloto',
+                            time: formatMs(timeMs),
                             primaryColor: primary,
                           );
                         }).toList(),
