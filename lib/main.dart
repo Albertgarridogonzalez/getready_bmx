@@ -32,6 +32,7 @@ class MyApp extends StatelessWidget {
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
           return MaterialApp(
+            title: 'Gateready',
             debugShowCheckedModeBanner: false,
             initialRoute: '/',
             theme: themeProvider.themeData, // Usa el ThemeData dinámico

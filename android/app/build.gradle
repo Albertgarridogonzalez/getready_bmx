@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.getready_bmx"
+    namespace = "com.example.gateready_bmx"
     compileSdk = 34
     ndkVersion = "25.2.9519653"
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.getready_bmx"
+        applicationId "com.example.gateready_bmx"
         minSdkVersion 23  // Firebase requiere al menos 23
         targetSdkVersion 34  // Última versión estable
         versionCode 1

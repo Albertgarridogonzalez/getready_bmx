@@ -1,4 +1,4 @@
-# getready_bmx
+# Gateready BMX
 
 A new Flutter project.
 

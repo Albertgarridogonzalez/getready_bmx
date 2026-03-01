@@ -1,4 +1,4 @@
-package com.example.getready_bmx
+package com.example.gateready_bmx
 
 import io.flutter.embedding.android.FlutterActivity
 

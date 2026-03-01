@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:474572921472:android:0e57865d97b5040fafa465",
         "android_client_info": {
-          "package_name": "com.example.getready_bmx"
+          "package_name": "com.example.gateready_bmx"
         }
       },
       "oauth_client": [
@@ -34,7 +34,7 @@
               "client_id": "474572921472-e1mg2qfuklts57hljfqrrj1g0ejud1pq.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.getreadyBmx"
+                "bundle_id": "com.example.gatereadyBmx"
               }
             }
           ]

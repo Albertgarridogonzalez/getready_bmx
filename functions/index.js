@@ -6,101 +6,125 @@ admin.initializeApp();
 
 exports.ingestRfid = onRequest({ cors: true }, async (req, res) => {
   try {
-    const key = req.get("x-ingest-key");
-    if (key !== process.env.INGEST_KEY) return res.status(401).send("unauthorized");
+    const { deviceId, items } = req.body || {};
+    const location = deviceId || "Mataró Gates";
 
-    const { start_ts, deviceId, items } = req.body || {};
-    if (!Array.isArray(items) || !start_ts) return res.status(400).send("bad payload");
-
-    const metaRef = admin.firestore().doc("meta/activeSession");
-    const metaSnap = await metaRef.get();
-    if (!metaSnap.exists) return res.status(404).send("no active session");
-
-    const sessionId = metaSnap.get("id");
-    const sessionRef = admin.firestore().doc(`sessions/${sessionId}`);
-    const sessionSnap = await sessionRef.get();
-    if (!sessionSnap.exists) return res.status(404).send("session not found");
-
-    const session = sessionSnap.data();
-    const pilots = Array.isArray(session.pilots) ? session.pilots : [];
-
-    const epcToUser = async (epc) => {
-      const idxSnap = await admin.firestore().doc(`rfidIndex/${epc}`).get();
-      if (idxSnap.exists) return idxSnap.data().userId;
-
-      const usersSnap = await admin.firestore()
-        .collection("users")
-        .where("rfid", "==", epc)
-        .limit(1).get();
-      if (!usersSnap.empty) return usersSnap.docs[0].id;
-
-      return null;
-    };
-
-    const toAppend = {};
-    for (const it of items) {
-      const userId = await epcToUser(it.epc);
-      if (!userId) continue;
-      if (!toAppend[userId]) toAppend[userId] = [];
-      toAppend[userId].push(Math.max(0, Math.floor(it.t_ms)));
+    console.log(`📥 Ingest Masiva: ${items?.length} items desde ${location}`);
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).send("Faltan items o formato incorrecto");
     }
 
-    let changed = false;
-    for (const [userId, times] of Object.entries(toAppend)) {
-      const idx = pilots.findIndex((p) => p.id === userId);
-      if (idx >= 0) {
-        const cur = Array.isArray(pilots[idx].times) ? pilots[idx].times : [];
-        pilots[idx].times = cur.concat(times);
-        changed = true;
-      }
+    // 1. Buscar o Crear Sesión (Lógica idéntica a bmxRaceTiming)
+    const sessionsQuery = await admin.firestore().collection("sessions")
+      .where("location", "==", location)
+      .limit(10).get();
+
+    const now = Date.now();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+
+    let sessionSnap = sessionsQuery.docs
+      .map(d => ({ id: d.id, ref: d.ref, data: d.data() }))
+      .filter(s => {
+        const sDate = s.data.date ? (s.data.date.toDate ? s.data.date.toDate().getTime() : 0) : 0;
+        return (now - sDate) < twentyFourHours;
+      })
+      .sort((a, b) => (b.data.date?.seconds || 0) - (a.data.date?.seconds || 0))[0];
+
+    let sessionRef, sessionData;
+    if (sessionSnap) {
+      sessionRef = sessionSnap.ref;
+      sessionData = sessionSnap.data;
+    } else {
+      sessionData = {
+        location: location,
+        distance: 0,
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        pilots: [],
+        active: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      sessionRef = await admin.firestore().collection("sessions").add(sessionData);
     }
 
-    if (changed) {
-      await sessionRef.update({
-        pilots,
-        lastIngestAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastDeviceId: deviceId || null,
-        lastStartTs: start_ts,
-      });
+    const pilotsInSession = Array.isArray(sessionData.pilots) ? sessionData.pilots : [];
 
-      // Actualizar Leaderboard para los mejores tiempos del lote
-      const location = deviceId || "Mataró Gates";
-      const docId = location.toLowerCase().trim().replace(/\s+/g, '_');
-      const leaderboardRef = admin.firestore().collection("leaderboards").doc(docId);
+    // 2. Procesar cada item del lote
+    for (const item of items) {
+      const { epc, t_ms } = item;
+      if (!epc || t_ms === undefined) continue;
 
-      for (const [userId, times] of Object.entries(toAppend)) {
-        const bestTime = Math.min(...times);
-        const p = pilots.find(p => p.id === userId);
-        const pName = p ? p.name : "Piloto";
+      // Buscar Piloto
+      let userId = null;
+      let pilotName = "Desconocido";
+      const idxRef = admin.firestore().doc(`rfidIndex/${epc}`);
+      const idxSnap = await idxRef.get();
 
-        try {
-          await admin.firestore().runTransaction(async (transaction) => {
-            const lbSnap = await transaction.get(leaderboardRef);
-            let records = lbSnap.exists ? (lbSnap.data().records || []) : [];
-            const rIdx = records.findIndex(r => r.name === pName);
-
-            if (rIdx >= 0) {
-              if (bestTime < records[rIdx].time) {
-                records[rIdx].time = bestTime;
-                records[rIdx].updatedAt = Date.now();
-              } else return;
-            } else {
-              records.push({ name: pName, time: bestTime, updatedAt: Date.now() });
-            }
-
-            records.sort((a, b) => a.time - b.time);
-            if (records.length > 20) records = records.slice(0, 20);
-            transaction.set(leaderboardRef, { location, records, lastUpdate: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-          });
-        } catch (e) {
-          console.error("Leaderboard error in ingestRfid:", e);
+      if (idxSnap.exists) {
+        const d = idxSnap.data();
+        userId = d.userId;
+        pilotName = d.pilotName;
+      } else {
+        const usersSnap = await admin.firestore().collection("users").get();
+        let userDoc = null;
+        for (const doc of usersSnap.docs) {
+          const data = doc.data();
+          if (data.rfid === epc) { userDoc = doc; pilotName = data.pilotName || data.name || "Piloto"; break; }
+          if (Array.isArray(data.pilots)) {
+            const p = data.pilots.find(x => x && x.rfid === epc);
+            if (p) { userDoc = doc; pilotName = p.name || data.pilotName || "Piloto"; break; }
+          }
+        }
+        if (userDoc) {
+          userId = userDoc.id;
+          await idxRef.set({ userId, pilotName, rfid: epc, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
         }
       }
+
+      if (!userId) continue;
+
+      // Actualizar en array de pilotos de la sesión
+      let pIdx = pilotsInSession.findIndex(p => p.id === userId || p.id === `auto_${userId}` || p.name === pilotName);
+      if (pIdx < 0) {
+        pilotsInSession.push({ id: `auto_${userId}`, name: pilotName, times: [t_ms], active: true });
+      } else {
+        if (!Array.isArray(pilotsInSession[pIdx].times)) pilotsInSession[pIdx].times = [];
+        pilotsInSession[pIdx].times.push(t_ms);
+        pilotsInSession[pIdx].name = pilotName;
+      }
+
+      // 3. Actualizar Leaderboard (Ranking)
+      const docId = location.toLowerCase().trim().replace(/\s+/g, '_');
+      const leaderboardRef = admin.firestore().collection("leaderboards").doc(docId);
+      try {
+        await admin.firestore().runTransaction(async (transaction) => {
+          const lbSnap = await transaction.get(leaderboardRef);
+          let records = lbSnap.exists ? (lbSnap.data().records || []) : [];
+          const rIdx = records.findIndex(r => r.name === pilotName);
+          if (rIdx >= 0) {
+            if (t_ms < records[rIdx].time) {
+              records[rIdx].time = t_ms;
+              records[rIdx].updatedAt = Date.now();
+            } else return;
+          } else {
+            records.push({ name: pilotName, time: t_ms, updatedAt: Date.now() });
+          }
+          records.sort((a, b) => a.time - b.time);
+          if (records.length > 20) records = records.slice(0, 20);
+          transaction.set(leaderboardRef, { location, records, lastUpdate: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        });
+      } catch (e) { console.error("Error Leaderboard batch:", e); }
     }
 
-    return res.status(200).send({ ok: true, appended: Object.keys(toAppend).length });
+    // 4. Guardar Sesión una sola vez
+    await sessionRef.update({
+      pilots: pilotsInSession,
+      lastIngestAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastDeviceId: location
+    });
+
+    return res.status(200).send({ ok: true, processed: items.length });
   } catch (e) {
-    console.error(e);
+    console.error("Error ingestRfid:", e);
     return res.status(500).send("server error");
   }
 });

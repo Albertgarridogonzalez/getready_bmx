@@ -252,61 +252,64 @@ void uploadRaceResults() {
   }
   Serial.println("========================================\n");
 
-  // Check connectivity
   if (WiFi.status() != WL_CONNECTED && usaSIM && !modem.isGprsConnected()) {
     conectarGPRS();
   }
 
   bool conectado = (WiFi.status() == WL_CONNECTED) || (usaSIM && modem.isGprsConnected());
-  
   if (!conectado) {
     Serial.println("❌ ERROR: Sin conexión (WiFi/SIM). No se pueden subir los datos.");
     return;
   }
 
-  Serial.printf("📤 Subiendo %d resultados...\n", sessionTags.size());
-
+  // CONSTRUIR JSON POR LOTE (BATCH)
+  // El formato esperado por ingestRfid es: { "start_ts": 123, "deviceId": "...", "items": [{ "epc": "...", "t_ms": 123 }, ...] }
+  String json = "{\"start_ts\":" + String(raceStartTime) + ",\"deviceId\":\"" + device_name + "\",\"items\":[";
+  
+  bool first = true;
   for (auto const& [rfid, data] : sessionTags) {
-    // Enviamos el RFID, el tiempo transcurrido (ms) y el RSSI
-    String json = "{\"rfid\":\"" + rfid + "\",\"t_ms\":" + String(data.bestMs) + ",\"rssi\":" + String(data.rssi) + ",\"deviceId\":\"" + device_name + "\"}";
-    
-    Serial.println("----------------------------------------");
-    Serial.print("➡️ ENVIANDO: ");
-    Serial.println(json);
-
-    if (WiFi.status() == WL_CONNECTED) {
-      WiFiClientSecure client; client.setInsecure();
-      HTTPClient http;
-      http.begin(client, BMX_FUNCTION_URL);
-      http.addHeader("Content-Type", "application/json");
-      int code = http.POST(json);
-      String resp = http.getString();
-      if (code == 200) Serial.printf("🌍 Resp. WiFi OK: %s\n", resp.c_str());
-      else Serial.printf("🌍 Error WiFi %d: %s\n", code, resp.c_str());
-      http.end();
-    } else if (usaSIM && modem.isGprsConnected()) {
-      esp_task_wdt_reset();
-      // Usamos el Proxy en Hostinger (Puerto 80)
-      String path = "/bmx_proxy.php?action=timing";
-      
-      gsmClient.setTimeout(15000);
-      HttpClient http(gsmClient, PROXY_HOST, 80); 
-      http.setHttpResponseTimeout(20000);
-      
-      int err = http.post(path, "application/json", json);
-      esp_task_wdt_reset();
-
-      if (err == 0) {
-        int code = http.responseStatusCode();
-        String resp = http.responseBody();
-        Serial.printf("🌍 Resp. PROXY SIM: %d - %s\n", code, resp.c_str());
-      } else {
-        Serial.printf("🌍 Error enviando x Proxy: %d\n", err);
-      }
-      http.stop();
-      esp_task_wdt_reset();
-    }
+    if (!first) json += ",";
+    json += "{\"epc\":\"" + rfid + "\",\"t_ms\":" + String(data.bestMs) + ",\"rssi\":" + String(data.rssi) + "}";
+    first = false;
   }
+  json += "]}";
+
+  Serial.printf("📤 Subiendo %d resultados en un solo lote...\n", sessionTags.size());
+  Serial.print("➡️ ENVIANDO JSON: ");
+  Serial.println(json);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure client; client.setInsecure();
+    HTTPClient http;
+    // Usamos ingestRfid para WiFi también, es más eficiente
+    http.begin(client, "https://us-central1-getready-bmx.cloudfunctions.net/ingestRfid");
+    http.addHeader("Content-Type", "application/json");
+    // Nota: Si ingestRfid requiere INGEST_KEY, habría que añadirla aquí
+    int code = http.POST(json);
+    String resp = http.getString();
+    Serial.printf("🌍 Resp. WiFi OK: %d - %s\n", code, resp.c_str());
+    http.end();
+  } else if (usaSIM && modem.isGprsConnected()) {
+    esp_task_wdt_reset();
+    gsmClient.setTimeout(20000);
+    HttpClient http(gsmClient, PROXY_HOST, 80); 
+    http.setHttpResponseTimeout(30000);
+    
+    // Enviamos al proxy con la acción 'ingest'
+    int err = http.post("/bmx_proxy.php?action=ingest", "application/json", json);
+    esp_task_wdt_reset();
+
+    if (err == 0) {
+      int code = http.responseStatusCode();
+      String resp = http.responseBody();
+      Serial.printf("🌍 Resp. PROXY INGEST: %d - %s\n", code, resp.c_str());
+    } else {
+      Serial.printf("🌍 Error enviando x Proxy: %d\n", err);
+    }
+    http.stop();
+    esp_task_wdt_reset();
+  }
+  
   Serial.println("----------------------------------------");
   Serial.println("✅ Proceso finalizado.");
 }

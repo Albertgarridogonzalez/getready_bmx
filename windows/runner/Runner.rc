@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "getready_bmx" "\0"
+            VALUE "FileDescription", "gateready_bmx" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "getready_bmx" "\0"
+            VALUE "InternalName", "gateready_bmx" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "getready_bmx.exe" "\0"
-            VALUE "ProductName", "getready_bmx" "\0"
+            VALUE "OriginalFilename", "gateready_bmx.exe" "\0"
+            VALUE "ProductName", "gateready_bmx" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

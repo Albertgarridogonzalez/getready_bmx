@@ -103,7 +103,7 @@ class _LiveScreenState extends State<LiveScreen> {
     ).listen((device) {
       showDebugMessage(
           "📡 Dispositivo encontrado: '${device.name}' - ${device.id}");
-      if (device.name.contains("GetReady")) {
+      if (device.name.contains("Gateready")) {
         showDebugMessage("✅ Dispositivo compatible encontrado");
         scanSubscription?.cancel();
         connectToDevice(device);

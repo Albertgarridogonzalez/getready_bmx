@@ -64,8 +64,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '474572921472',
     projectId: 'getready-bmx',
     storageBucket: 'getready-bmx.firebasestorage.app',
-    iosClientId: '474572921472-e1mg2qfuklts57hljfqrrj1g0ejud1pq.apps.googleusercontent.com',
-    iosBundleId: 'com.example.getreadyBmx',
+    iosClientId:
+        '474572921472-e1mg2qfuklts57hljfqrrj1g0ejud1pq.apps.googleusercontent.com',
+    iosBundleId: 'com.example.gatereadyBmx',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -74,8 +75,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '474572921472',
     projectId: 'getready-bmx',
     storageBucket: 'getready-bmx.firebasestorage.app',
-    iosClientId: '474572921472-e1mg2qfuklts57hljfqrrj1g0ejud1pq.apps.googleusercontent.com',
-    iosBundleId: 'com.example.getreadyBmx',
+    iosClientId:
+        '474572921472-e1mg2qfuklts57hljfqrrj1g0ejud1pq.apps.googleusercontent.com',
+    iosBundleId: 'com.example.gatereadyBmx',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
@@ -87,5 +89,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'getready-bmx.firebasestorage.app',
     measurementId: 'G-1Z21X1KR5N',
   );
-
 }

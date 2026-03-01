@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.getready_bmx">
+    package="com.example.gateready_bmx">
 
     <!-- Permisos para BLE -->
     <uses-permission android:name="android.permission.BLUETOOTH"/>
@@ -15,7 +15,7 @@
 
     <application
         tools:overrideLibrary="io.flutter.plugins.firebase.auth"
-        android:label="getready_bmx"
+        android:label="Gateready"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         
