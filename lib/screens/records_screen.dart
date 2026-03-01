@@ -156,7 +156,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
                             "${sessionDate.day}/${sessionDate.month}/${sessionDate.year}";
                         final location =
                             data['location'] ?? 'Ubicación desconocida';
-                        final int distance = data['distance'] ?? 0;
+                        // final int distance = data['distance'] ?? 0;
                         final List<dynamic> pilots = data['pilots'] ?? [];
 
                         List<dynamic> filteredPilots;
@@ -224,11 +224,11 @@ class _RecordsScreenState extends State<RecordsScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 4),
-                                  Text(
+                                  /* Text(
                                     "Distancia: ${distance}m",
                                     style: const TextStyle(
                                         fontSize: 13, color: Colors.grey),
-                                  ),
+                                  ), */
                                   const Padding(
                                     padding: EdgeInsets.symmetric(vertical: 12),
                                     child: Divider(height: 1),

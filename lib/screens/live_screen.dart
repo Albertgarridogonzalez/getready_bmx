@@ -8,7 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:getready_bmx/providers/auth_provider.dart';
-import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart';
 
 /// Convierte milisegundos (int) a un String con segundos y 3 decimales.
 /// Ej: 4590 ms -> "4.590", 34578 ms -> "34.578"
@@ -55,6 +55,8 @@ class _LiveScreenState extends State<LiveScreen> {
 
   Timer? reconnectTimer;
   bool debugActive = true; // Variable para activar/desactivar mensajes de debug
+  String?
+      expandedPilotId; // Para rastrear qué piloto tiene los tiempos expandidos
 
   @override
   void initState() {
@@ -236,7 +238,7 @@ class _LiveScreenState extends State<LiveScreen> {
   // ----------------------------------------------------------------
   // Dialog para crear ubicación
   // ----------------------------------------------------------------
-  void _showCreateLocationDialog() {
+  /* void _showCreateLocationDialog() {
     locationController.clear();
     distanceController.clear();
     showDialog(
@@ -267,7 +269,7 @@ class _LiveScreenState extends State<LiveScreen> {
         );
       },
     );
-  }
+  } */
 
   void createLocation() async {
     String location = locationController.text.trim();
@@ -287,7 +289,7 @@ class _LiveScreenState extends State<LiveScreen> {
   // ----------------------------------------------------------------
   // Dialog para crear sesión
   // ----------------------------------------------------------------
-  void _showCreateSessionPopup() {
+  /* void _showCreateSessionPopup() {
     DateTime sessionDate = selectedDate;
     String? sessionLocation = selectedLocation;
     showDialog(
@@ -371,7 +373,7 @@ class _LiveScreenState extends State<LiveScreen> {
         );
       },
     );
-  }
+  } */
 
   // ----------------------------------------------------------------
   // Dialog para seleccionar pilotos
@@ -545,7 +547,7 @@ class _LiveScreenState extends State<LiveScreen> {
 
     return Scaffold(
       extendBody: true,
-      appBar: AppBar(
+      /* appBar: AppBar(
         title: Text("LIVE SESSION",
             style: GoogleFonts.orbitron(
                 fontSize: 18, fontWeight: FontWeight.bold)),
@@ -566,7 +568,7 @@ class _LiveScreenState extends State<LiveScreen> {
               },
             ),
         ],
-      ),
+      ), */
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Column(
@@ -613,7 +615,7 @@ class _LiveScreenState extends State<LiveScreen> {
       ),
       child: Column(
         children: [
-          Row(
+          /* Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
@@ -641,9 +643,9 @@ class _LiveScreenState extends State<LiveScreen> {
               ),
             ],
           ),
-          const Divider(height: 30),
+          const Divider(height: 30), */
           _buildSessionSelector(),
-          if (currentSessionId != null) ...[
+          /* if (currentSessionId != null) ...[
             const SizedBox(height: 15),
             ElevatedButton.icon(
               icon: const Icon(Icons.person_add_outlined, size: 20),
@@ -660,13 +662,13 @@ class _LiveScreenState extends State<LiveScreen> {
               ),
               onPressed: showPilotSelectionPopup,
             ),
-          ],
+          ], */
         ],
       ),
     );
   }
 
-  Widget _buildStatusIndicator(
+  /* Widget _buildStatusIndicator(
       {required IconData icon,
       required Color color,
       required String label,
@@ -683,7 +685,7 @@ class _LiveScreenState extends State<LiveScreen> {
         ],
       ),
     );
-  }
+  } */
 
   Widget _buildSessionSelector() {
     return StreamBuilder<QuerySnapshot>(
@@ -697,25 +699,42 @@ class _LiveScreenState extends State<LiveScreen> {
         var docs = snapshot.data!.docs;
         if (docs.isEmpty) return const Text("No hay sesiones");
 
+        final primary = Provider.of<ThemeProvider>(context).primaryColor;
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.withOpacity(0.2)),
+            gradient:
+                LinearGradient(colors: [primary.withOpacity(0.8), primary]),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                  color: primary.withOpacity(0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4))
+            ],
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: currentSessionId,
-              hint: const Text("Seleccionar sesión activa"),
+              hint: Text("SELECCIONAR SESIÓN",
+                  style: GoogleFonts.orbitron(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14)),
               isExpanded: true,
+              dropdownColor: primary,
+              iconEnabledColor: Colors.white,
               items: docs.map((doc) {
                 var data = doc.data() as Map<String, dynamic>;
                 DateTime date = (data['date'] as Timestamp).toDate();
                 return DropdownMenuItem<String>(
                   value: doc.id,
                   child: Text(
-                      "${data['location']} - ${date.toString().split(' ')[0]}",
-                      style: const TextStyle(fontSize: 13)),
+                      "${data['location'].toString().toUpperCase()} - ${date.toString().split(' ')[0]}",
+                      style: GoogleFonts.orbitron(
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold)),
                 );
               }).toList(),
               onChanged: (val) async {
@@ -855,7 +874,10 @@ class _LiveScreenState extends State<LiveScreen> {
     final List<dynamic> times = pilot['times'] ?? [];
     final lastTime = times.isNotEmpty ? formatMs(times.last as int) : "---";
 
-    return Container(
+    final bool isExpanded = pilot['id'] == expandedPilotId;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color:
@@ -864,29 +886,78 @@ class _LiveScreenState extends State<LiveScreen> {
         border: Border.all(
             color: isWaiting ? primary : Colors.transparent, width: 2),
       ),
-      child: ListTile(
-        onTap: isAdmin
-            ? () {
-                if (esp32Connected) {
-                  setState(() => waitingPilotId = pilot['id']);
+      child: Column(
+        children: [
+          ListTile(
+            onTap: () {
+              setState(() {
+                if (expandedPilotId == pilot['id']) {
+                  expandedPilotId = null;
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("ESP32 no conectado")));
+                  expandedPilotId = pilot['id'];
                 }
-              }
-            : null,
-        title: Text(pilot['name'],
-            style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("Último: $lastTime s • Total: ${times.length}",
-            style: const TextStyle(fontSize: 12)),
-        trailing: isWaiting
-            ? const Icon(Icons.sync, color: Colors.green)
-            : const Icon(Icons.timer_outlined),
+              });
+            },
+            title: Text(pilot['name'],
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text("Último: $lastTime s • Total: ${times.length}",
+                style: const TextStyle(fontSize: 12)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isWaiting)
+                  const Icon(Icons.sync, color: Colors.green)
+                else
+                  const Icon(Icons.timer_outlined),
+                const SizedBox(width: 8),
+                Icon(isExpanded
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down),
+              ],
+            ),
+          ),
+          if (isExpanded && times.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: times
+                    .map((t) => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: primary.withOpacity(0.2)),
+                          ),
+                          child: Text(
+                            "${formatMs(t as int)}s",
+                            style: GoogleFonts.orbitron(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: primary,
+                            ),
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ),
+          if (isExpanded && times.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text("Sin tiempos registrados",
+                  style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey,
+                      fontSize: 12)),
+            ),
+        ],
       ),
     );
   }
 
-  void _showConfirmRandomTimes() {
+  /* void _showConfirmRandomTimes() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -909,9 +980,9 @@ class _LiveScreenState extends State<LiveScreen> {
         ],
       ),
     );
-  }
+  } */
 
-  void _showQuickSettings() {
+  /* void _showQuickSettings() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -947,7 +1018,7 @@ class _LiveScreenState extends State<LiveScreen> {
         ),
       ),
     );
-  }
+  } */
 
   @override
   void dispose() {

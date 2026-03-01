@@ -19,7 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<String> _pageTitles = [
     'GateReady BMX',
-    'Live',
+    'Live Session',
     'Historial',
     'Leaderboard',
     'Ajustes'
