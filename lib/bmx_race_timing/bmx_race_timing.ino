@@ -94,8 +94,12 @@ static const uint32_t READER_BAUD = 115200;
 
 HardwareSerial SerialAT(1);
 TinyGsm modem(SerialAT);
-TinyGsmClient gsmClient(modem);
+TinyGsmClient gsmClient(modem); // Revertido a cliente normal (HTTP)
 bool usaSIM = false;
+
+// ✅ TU DOMINIO DE HOSTINGER (Cámbialo aquí)
+const char* PROXY_HOST = "proxy.gatereadybmx.com"; 
+
 
 uint8_t rxbuf[512];
 int rxlen = 0;
@@ -282,11 +286,11 @@ void uploadRaceResults() {
       http.end();
     } else if (usaSIM && modem.isGprsConnected()) {
       esp_task_wdt_reset();
-      String host = "us-central1-getready-bmx.cloudfunctions.net";
-      String path = "/bmxRaceTiming";
+      // Usamos el Proxy en Hostinger (Puerto 80)
+      String path = "/bmx_proxy.php?action=timing";
       
       gsmClient.setTimeout(15000);
-      HttpClient http(gsmClient, host, 80); 
+      HttpClient http(gsmClient, PROXY_HOST, 80); 
       http.setHttpResponseTimeout(20000);
       
       int err = http.post(path, "application/json", json);
@@ -295,10 +299,9 @@ void uploadRaceResults() {
       if (err == 0) {
         int code = http.responseStatusCode();
         String resp = http.responseBody();
-        if (code == 200) Serial.printf("🌍 Resp. SIM OK: %s\n", resp.c_str());
-        else Serial.printf("🌍 Error SIM %d: %s\n", code, resp.c_str());
+        Serial.printf("🌍 Resp. PROXY SIM: %d - %s\n", code, resp.c_str());
       } else {
-        Serial.printf("🌍 Error enviando x SIM: %d\n", err);
+        Serial.printf("🌍 Error enviando x Proxy: %d\n", err);
       }
       http.stop();
       esp_task_wdt_reset();
@@ -424,18 +427,19 @@ void initSessionFirebase() {
   } else if (usaSIM && modem.isGprsConnected()) {
       esp_task_wdt_reset();
       gsmClient.setTimeout(15000);
-      HttpClient http(gsmClient, "us-central1-getready-bmx.cloudfunctions.net", 80);
+      HttpClient http(gsmClient, PROXY_HOST, 80);
       http.setHttpResponseTimeout(20000);
       
-      int err = http.post("/startBmxSession", "application/json", json);
+      // Usamos el Proxy para iniciar sesión
+      int err = http.post("/bmx_proxy.php?action=start", "application/json", json);
       esp_task_wdt_reset();
 
       if (err == 0) {
         int code = http.responseStatusCode();
         String resp = http.responseBody();
-        Serial.printf("🌍 Resp Start Session SIM: %d - %s\n", code, resp.c_str());
+        Serial.printf("🌍 Resp Start Session PROXY: %d - %s\n", code, resp.c_str());
       } else {
-        Serial.printf("🌍 Error SIM POST: %d\n", err);
+        Serial.printf("🌍 Error Proxy Session: %d\n", err);
       }
       http.stop();
       esp_task_wdt_reset();
