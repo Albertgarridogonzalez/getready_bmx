@@ -646,21 +646,18 @@ class _LiveScreenState extends State<LiveScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Column(
           children: [
-            if (isAdmin) _buildAdminControlCard(primary),
+            _buildControlCard(primary, isAdmin),
 
-            if (currentSessionId != null || !isAdmin) ...[
-              const SizedBox(height: 20),
-              // _buildSessionInfoCard(primary, isAdmin),
-              // const SizedBox(height: 20),
+            const SizedBox(height: 10),
+
+            if (currentSessionId != null) ...[
               Expanded(
-                child: isAdmin
-                    ? _buildAdminPilotsMonitoring(currentSessionId!)
-                    : _buildUserActiveSessionMonitoring(),
+                child: _buildPilotsMonitoring(currentSessionId!),
               ),
-            ] else if (isAdmin) ...[
+            ] else ...[
               const Expanded(
                 child: Center(
-                  child: Text("Selecciona o crea una sesión para comenzar",
+                  child: Text("Selecciona una sesión para comenzar",
                       style: TextStyle(
                           color: Colors.grey, fontStyle: FontStyle.italic)),
                 ),
@@ -673,7 +670,7 @@ class _LiveScreenState extends State<LiveScreen> {
     );
   }
 
-  Widget _buildAdminControlCard(Color primary) {
+  Widget _buildControlCard(Color primary, bool isAdmin) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -688,54 +685,7 @@ class _LiveScreenState extends State<LiveScreen> {
       ),
       child: Column(
         children: [
-          /* Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  _buildStatusIndicator(
-                    icon: esp32Connected
-                        ? Icons.bluetooth_connected
-                        : Icons.bluetooth_disabled,
-                    color: esp32Connected ? Colors.green : Colors.red,
-                    label: esp32Connected ? "CONECTADO" : "DESCONECTADO",
-                    onTap: esp32Connected ? null : scanAndConnect,
-                  ),
-                  const SizedBox(width: 20),
-                  _buildStatusIndicator(
-                    icon: Icons.hourglass_full_rounded,
-                    color: Colors.purpleAccent,
-                    label: "RANDOM",
-                    onTap: () => _showConfirmRandomTimes(),
-                  ),
-                ],
-              ),
-              IconButton(
-                icon: Icon(Icons.settings, color: primary),
-                onPressed: () => _showQuickSettings(),
-              ),
-            ],
-          ),
-          const Divider(height: 30), */
-          _buildSessionSelector(),
-          /* if (currentSessionId != null) ...[
-            const SizedBox(height: 15),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.person_add_outlined, size: 20),
-              label: Text("GESTIONAR RIDERS",
-                  style: GoogleFonts.orbitron(
-                      fontSize: 11, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 45),
-                backgroundColor: primary.withOpacity(0.1),
-                foregroundColor: primary,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: showPilotSelectionPopup,
-            ),
-          ], */
+          _buildSessionSelector(isAdmin),
         ],
       ),
     );
@@ -760,7 +710,7 @@ class _LiveScreenState extends State<LiveScreen> {
     );
   } */
 
-  Widget _buildSessionSelector() {
+  Widget _buildSessionSelector(bool isAdmin) {
     DateTime now = DateTime.now();
     DateTime yesterday = now.subtract(const Duration(days: 1));
     DateTime yesterdayStart =
@@ -777,13 +727,38 @@ class _LiveScreenState extends State<LiveScreen> {
         var docs = snapshot.data!.docs;
         if (docs.isEmpty) return const Text("No hay sesiones");
 
-        // Auto-seleccionar si solo hay una sesión y ninguna seleccionada
-        if (docs.length == 1 && currentSessionId == null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && currentSessionId == null) {
-              _activateSession(docs.first.id);
+        // Auto-seleccionar sesión activa o la única disponible
+        if (currentSessionId == null) {
+          String? toSelect;
+          Map<String, dynamic>? toSelectData;
+
+          // Buscar la sesión activa
+          for (var doc in docs) {
+            var data = doc.data() as Map<String, dynamic>;
+            if (data['active'] == true) {
+              toSelect = doc.id;
+              toSelectData = data;
+              break;
             }
-          });
+          }
+
+          // Si no hay activa pero solo hay una sesión, seleccionamos esa
+          if (toSelect == null && docs.length == 1) {
+            toSelect = docs.first.id;
+            toSelectData = docs.first.data() as Map<String, dynamic>;
+          }
+
+          if (toSelect != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && currentSessionId == null) {
+                if (isAdmin) {
+                  _activateSession(toSelect!);
+                } else {
+                  _locallySelectSession(toSelect!, toSelectData!);
+                }
+              }
+            });
+          }
         }
 
         final primary = Provider.of<ThemeProvider>(context).primaryColor;
@@ -825,13 +800,30 @@ class _LiveScreenState extends State<LiveScreen> {
                 );
               }).toList(),
               onChanged: (val) async {
-                if (val != null) _activateSession(val);
+                if (val != null) {
+                  if (isAdmin) {
+                    _activateSession(val);
+                  } else {
+                    var doc = docs.firstWhere((d) => d.id == val);
+                    _locallySelectSession(
+                        val, doc.data() as Map<String, dynamic>);
+                  }
+                }
               },
             ),
           ),
         );
       },
     );
+  }
+
+  void _locallySelectSession(String sessionId, Map<String, dynamic> data) {
+    setState(() {
+      currentSessionId = sessionId;
+      selectedLocation = data['location'];
+      selectedDistance = data['distance'];
+      selectedDate = (data['date'] as Timestamp).toDate();
+    });
   }
 
   Future<void> _activateSession(String sessionId) async {
@@ -908,7 +900,7 @@ class _LiveScreenState extends State<LiveScreen> {
     );
   } */
 
-  Widget _buildAdminPilotsMonitoring(String sessionId) {
+  Widget _buildPilotsMonitoring(String sessionId) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('sessions')
@@ -961,30 +953,6 @@ class _LiveScreenState extends State<LiveScreen> {
     var list = grouped.values.toList();
     list.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
     return list;
-  }
-
-  Widget _buildUserActiveSessionMonitoring() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('sessions')
-          .where('active', isEqualTo: true)
-          .limit(1)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
-          return const Center(child: Text("Esperando sesión activa..."));
-        var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-
-        List<Map<String, dynamic>> activePilots =
-            _getGroupedPilots(data['pilots'] ?? []);
-
-        return ListView.builder(
-          itemCount: activePilots.length,
-          itemBuilder: (context, idx) =>
-              _buildPilotLiveCard(activePilots[idx], false),
-        );
-      },
-    );
   }
 
   Widget _buildPilotLiveCard(Map<String, dynamic> pilot, bool isWaiting) {

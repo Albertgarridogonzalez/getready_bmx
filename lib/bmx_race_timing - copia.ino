@@ -13,7 +13,6 @@
 #include <Update.h>
 #include "esp_bt.h"
 #include <map>
-#include "esp_log.h" // Librería para control de logs de sistema
 
 #include <TinyGsmClient.h>
 #include <ArduinoHttpClient.h> 
@@ -282,27 +281,28 @@ void uploadRaceResults() {
       http.end();
     } else if (usaSIM && modem.isGprsConnected()) {
       esp_task_wdt_reset();
+      // Nota: Cloud Functions usualmente requieren HTTPS (443). 
+      // El puerto 80 podría ser rechazado por Google.
       String host = "us-central1-getready-bmx.cloudfunctions.net";
       String path = "/bmxRaceTiming";
       
-      gsmClient.setTimeout(15000);
-      HttpClient http(gsmClient, host, 80); 
-      http.setHttpResponseTimeout(20000);
+      gsmClient.setTimeout(15000); // Timeout para el socket TCP
+      HttpClient http(gsmClient, host, 80);
+      http.setHttpResponseTimeout(20000); // Timeout para la respuesta HTTP
       
       int err = http.post(path, "application/json", json);
       esp_task_wdt_reset();
-
+      
       if (err == 0) {
         int code = http.responseStatusCode();
         String resp = http.responseBody();
-        if (code == 200) Serial.printf("🌍 Resp. SIM OK: %s\n", resp.c_str());
-        else Serial.printf("🌍 Error SIM %d: %s\n", code, resp.c_str());
+        Serial.printf("🌍 Resp. SIM OK: %d - %s\n", code, resp.c_str());
       } else {
-        Serial.printf("🌍 Error enviando x SIM: %d\n", err);
+        Serial.printf("🌍 Error SIM POST: %d\n", err);
       }
       http.stop();
-      esp_task_wdt_reset();
     }
+    esp_task_wdt_reset();
   }
   Serial.println("----------------------------------------");
   Serial.println("✅ Proceso finalizado.");
@@ -377,13 +377,7 @@ void pumpReader() {
 // ================== SETUP / LOOP ==================
 void setup() {
   Serial.begin(115200);
-  
-  // SOLUCIÓN DEFINITIVA: Silenciar logs de bajo nivel del sistema (WiFi/BT)
-  esp_log_level_set("wifi", ESP_LOG_NONE);
-  esp_log_level_set("bt", ESP_LOG_NONE);
-  esp_log_level_set("esp_timer", ESP_LOG_NONE);
-
-  delay(1000); 
+  delay(1000); // Dar tiempo al Serial Monitor
   Serial.println("\n\n######################################");
   Serial.println("🏁 BMX RACE TIMING SYSTEM STARTING...");
   Serial.println("######################################\n");
@@ -391,7 +385,7 @@ void setup() {
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
   
   esp_task_wdt_config_t twdt_config = {
-      .timeout_ms = 120000, // IMPORTANTE: 120s para dar tiempo a la SIM sin reiniciar
+      .timeout_ms = 120000, // Aumentado a 120s para dar margen a la SIM/GPRS
       .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
       .trigger_panic = true,
   };
@@ -423,23 +417,24 @@ void initSessionFirebase() {
       http.end();
   } else if (usaSIM && modem.isGprsConnected()) {
       esp_task_wdt_reset();
+      Serial.println("📡 Conectando a Firebase vía SIM (Usando puerto 80, puede fallar si requiere HTTPS)...");
       gsmClient.setTimeout(15000);
       HttpClient http(gsmClient, "us-central1-getready-bmx.cloudfunctions.net", 80);
-      http.setHttpResponseTimeout(20000);
+      http.setHttpResponseTimeout(20000); // 20s timeout
       
       int err = http.post("/startBmxSession", "application/json", json);
       esp_task_wdt_reset();
-
+      
       if (err == 0) {
         int code = http.responseStatusCode();
         String resp = http.responseBody();
         Serial.printf("🌍 Resp Start Session SIM: %d - %s\n", code, resp.c_str());
       } else {
-        Serial.printf("🌍 Error SIM POST: %d\n", err);
+        Serial.printf("🌍 Error enviando POST SIM: %d\n", err);
       }
       http.stop();
-      esp_task_wdt_reset();
   }
+  esp_task_wdt_reset();
 }
 
 void loop() {
@@ -484,11 +479,7 @@ void loop() {
       Serial.println("📡 Intentando crear sesión vía WiFi...");
       initSessionFirebase();
     } else {
-      Serial.println("\n⚠️ WiFi Fallido. APAGANDO WiFi para evitar ruidos y usando SIM...");
-      WiFi.disconnect(true);
-      WiFi.mode(WIFI_OFF); 
-      delay(500);
-      
+      Serial.println("\n⚠️ WiFi Fallido. Intentando con SIM...");
       usaSIM = detectarSIM();
       if (usaSIM && conectarGPRS()) {
         Serial.println("📡 Intentando crear sesión vía SIM...");
