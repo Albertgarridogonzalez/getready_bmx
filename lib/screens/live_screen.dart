@@ -1033,59 +1033,61 @@ class _LiveScreenState extends State<LiveScreen> {
               ],
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            alignment: Alignment.topCenter,
-            child: isExpanded
-                ? (times.isNotEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: times
-                                .map<Widget>((t) => Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: primary.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                            color: primary.withOpacity(0.2)),
-                                      ),
-                                      child: Text(
-                                        "${formatMs(t)}s",
-                                        style: GoogleFonts.orbitron(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: primary,
-                                        ),
-                                      ),
-                                    ))
-                                .toList(),
+          if (isExpanded)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(color: Colors.white24, height: 20),
+                  Text(
+                    "HISTORIAL DE TIEMPOS:",
+                    style: GoogleFonts.orbitron(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: primary.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: times.map<Widget>((t) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: primary.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: primary.withOpacity(0.5)),
+                        ),
+                        child: Text(
+                          "${formatMs(t)}s",
+                          style: GoogleFonts.orbitron(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color:
+                                Colors.white, // Forzado blanco para visibilidad
                           ),
                         ),
-                      )
-                    : const Padding(
-                        padding: EdgeInsets.only(bottom: 16),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: Text(
-                            "Sin tiempos registrados",
-                            style: TextStyle(
-                              fontStyle: FontStyle.italic,
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ))
-                : const SizedBox.shrink(),
-          ),
+                      );
+                    }).toList(),
+                  ),
+                  if (times.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Text(
+                        "Sin tiempos registrados aún",
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontStyle: FontStyle.italic,
+                            fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
     );
