@@ -53,10 +53,11 @@ exports.ingestRfid = onRequest({ cors: true }, async (req, res) => {
       const { epc, t_ms } = item;
       if (!epc || t_ms === undefined) continue;
 
-      // Buscar Piloto
+      // Buscar Piloto por los últimos 6 dígitos
+      const rfid6 = epc.length >= 6 ? epc.slice(-6).toUpperCase() : epc.toUpperCase();
       let userId = null;
       let pilotName = "Desconocido";
-      const idxRef = admin.firestore().doc(`rfidIndex/${epc}`);
+      const idxRef = admin.firestore().doc(`rfidIndex/${rfid6}`);
       const idxSnap = await idxRef.get();
 
       if (idxSnap.exists) {
@@ -68,24 +69,31 @@ exports.ingestRfid = onRequest({ cors: true }, async (req, res) => {
         let userDoc = null;
         for (const doc of usersSnap.docs) {
           const data = doc.data();
-          if (data.rfid === epc) { userDoc = doc; pilotName = data.pilotName || data.name || "Piloto"; break; }
+          if (data.rfid && data.rfid.toUpperCase() === rfid6) { userDoc = doc; pilotName = data.pilotName || data.name || "Piloto"; break; }
           if (Array.isArray(data.pilots)) {
-            const p = data.pilots.find(x => x && x.rfid === epc);
+            const p = data.pilots.find(x => x && x.rfid && x.rfid.toUpperCase() === rfid6);
             if (p) { userDoc = doc; pilotName = p.name || data.pilotName || "Piloto"; break; }
           }
         }
         if (userDoc) {
           userId = userDoc.id;
-          await idxRef.set({ userId, pilotName, rfid: epc, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+          await idxRef.set({ userId, pilotName, rfid: rfid6, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
         }
       }
 
       if (!userId) continue;
 
       // Actualizar en array de pilotos de la sesión
-      let pIdx = pilotsInSession.findIndex(p => p.id === userId || p.id === `auto_${userId}` || p.name === pilotName);
+      // BUG FIX: Diferenciar pilotos del mismo padre por nombre
+      let pIdx = pilotsInSession.findIndex(p => 
+        (p.id === userId || p.id === `auto_${userId}` || p.id === `auto_${userId}_${pilotName.replace(/\s+/g, '_')}`) && 
+        p.name === pilotName
+      );
+
       if (pIdx < 0) {
-        pilotsInSession.push({ id: `auto_${userId}`, name: pilotName, times: [t_ms], active: true });
+        // Crear un ID único para el piloto (Padre + Nombre)
+        const pilotId = `auto_${userId}_${pilotName.replace(/\s+/g, '_')}`;
+        pilotsInSession.push({ id: pilotId, name: pilotName, times: [t_ms], active: true });
       } else {
         if (!Array.isArray(pilotsInSession[pIdx].times)) pilotsInSession[pIdx].times = [];
         pilotsInSession[pIdx].times.push(t_ms);
@@ -138,11 +146,12 @@ exports.bmxRaceTiming = onRequest({ cors: true }, async (req, res) => {
       return res.status(400).send("Faltan datos (rfid o t_ms)");
     }
 
-    // 1. Buscar Piloto por RFID
+    // 1. Buscar Piloto por los últimos 6 dígitos del RFID
     let userId = null;
     let pilotName = "Desconocido";
+    const rfid6 = rfid.length >= 6 ? rfid.slice(-6).toUpperCase() : rfid.toUpperCase();
 
-    const idxRef = admin.firestore().doc(`rfidIndex/${rfid}`);
+    const idxRef = admin.firestore().doc(`rfidIndex/${rfid6}`);
     const idxSnap = await idxRef.get();
 
     if (idxSnap.exists) {
@@ -151,20 +160,20 @@ exports.bmxRaceTiming = onRequest({ cors: true }, async (req, res) => {
       pilotName = data.pilotName;
       console.log(`✅ Piloto encontrado en índice: ${pilotName} (${userId})`);
     } else {
-      console.log(`🔍 RFID ${rfid} no en índice. Escaneando usuarios...`);
+      console.log(`🔍 RFID ${rfid6} no en índice. Escaneando usuarios...`);
       const usersSnap = await admin.firestore().collection("users").get();
       let userDoc = null;
 
       for (const doc of usersSnap.docs) {
         const data = doc.data();
         // Verificar rfid directo o en array de pilotos
-        if (data.rfid === rfid) {
+        if (data.rfid && data.rfid.toUpperCase() === rfid6) {
           userDoc = doc;
           pilotName = data.pilotName || data.name || "Piloto";
           break;
         }
         if (Array.isArray(data.pilots)) {
-          const p = data.pilots.find(x => x && x.rfid === rfid);
+          const p = data.pilots.find(x => x && x.rfid && x.rfid.toUpperCase() === rfid6);
           if (p) {
             userDoc = doc;
             pilotName = p.name || data.pilotName || "Piloto";
@@ -178,13 +187,13 @@ exports.bmxRaceTiming = onRequest({ cors: true }, async (req, res) => {
         await idxRef.set({
           userId: userId,
           pilotName: pilotName,
-          rfid: rfid,
+          rfid: rfid6,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         console.log(`📝 Índice creado para ${pilotName}`);
       } else {
-        console.warn(`❌ RFID ${rfid} no encontrado.`);
-        return res.status(404).send(`Corredor con RFID ${rfid} no identificado`);
+        console.warn(`❌ RFID ${rfid6} no encontrado.`);
+        return res.status(404).send(`Corredor con RFID ${rfid6} no identificado`);
       }
     }
 
@@ -226,17 +235,16 @@ exports.bmxRaceTiming = onRequest({ cors: true }, async (req, res) => {
     // 3. Actualizar Piloto en Sesión
     const pilots = Array.isArray(sessionData.pilots) ? sessionData.pilots : [];
 
-    // Intentar encontrar al piloto en la sesión (por su ID real de usuario o ID automático)
-    let pIdx = pilots.findIndex((p) => p.id === userId || p.id === `auto_${userId}`);
+    // BUG FIX: Diferenciar pilotos del mismo padre por nombre
+    // Buscamos concordancia de ID Y de nombre
+    let pIdx = pilots.findIndex((p) => 
+      (p.id === userId || p.id === `auto_${userId}` || p.id === `auto_${userId}_${pilotName.replace(/\s+/g, '_')}`) && 
+      p.name === pilotName
+    );
 
-    // Si no se encuentra, buscar por nombre (como respaldo)
     if (pIdx < 0) {
-      pIdx = pilots.findIndex((p) => p.name === pilotName);
-    }
-
-    if (pIdx < 0) {
-      // Si sigue sin encontrarse, creamos uno automático
-      const newId = `auto_${userId}`;
+      // Si no se encuentra con la combinación exacta, creamos uno nuevo único
+      const newId = `auto_${userId}_${pilotName.replace(/\s+/g, '_')}`;
       pilots.push({
         id: newId,
         name: pilotName,
@@ -244,10 +252,9 @@ exports.bmxRaceTiming = onRequest({ cors: true }, async (req, res) => {
         active: true
       });
     } else {
-      // Si se encuentra, actualizamos su ID si era parcial y añadimos el tiempo
+      // Si se encuentra, añadimos el tiempo
       if (!Array.isArray(pilots[pIdx].times)) pilots[pIdx].times = [];
       pilots[pIdx].times.push(t_ms);
-      // Aseguramos que el nombre esté actualizado
       pilots[pIdx].name = pilotName;
     }
 

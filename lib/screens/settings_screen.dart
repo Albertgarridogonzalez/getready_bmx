@@ -126,15 +126,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     for (int i = 0; i < _pilotControllers.length; i++) {
       final pilotName = _pilotControllers[i].text.trim();
-      final pilotRfid = _pilots[i]['rfid']?.toString().trim() ?? '';
-      if (pilotName.isNotEmpty) {
-        updatedPilots.add({
-          'id': _pilots[i]['id'] ??
-              DateTime.now().millisecondsSinceEpoch.toString(),
-          'name': pilotName,
-          'rfid': pilotRfid,
-        });
+      String pilotRfid = _pilots[i]['rfid']?.toString().trim().toUpperCase() ?? '';
+
+      if (pilotName.isEmpty) continue;
+
+      if (pilotRfid.isNotEmpty) {
+        // Validar longitud de 6 dígitos
+        if (pilotRfid.length != 6) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('El RFID de "$pilotName" debe tener exactamente 6 caracteres.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
+        // 🔍 Verificar si este RFID ya está en uso por OTRO piloto del MISMO usuario
+        bool duplicateInSelf = updatedPilots.any((p) => p['rfid'] == pilotRfid);
+        if (duplicateInSelf) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('El RFID "$pilotRfid" ya está asignado a otro de tus pilotos.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+          return;
+        }
+
+        // 🔍 Verificar en Firestore si ya existe este RFID en rfidIndex (otro usuario)
+        final idxSnap = await FirebaseFirestore.instance.collection('rfidIndex').doc(pilotRfid).get();
+        if (idxSnap.exists) {
+          final data = idxSnap.data() as Map<String, dynamic>;
+          if (data['userId'] != userId || data['pilotName'] != pilotName) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('El RFID "$pilotRfid" ya está siendo usado por ${data['pilotName']}.'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+            return;
+          }
+        }
       }
+
+      updatedPilots.add({
+        'id': _pilots[i]['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        'name': pilotName,
+        'rfid': pilotRfid,
+      });
     }
 
     // 🔹 Guardar los pilotos actualizados en el usuario
@@ -151,14 +191,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             .set({
           'userId': userId,
           'pilotName': p['name'],
+          'rfid': p['rfid'],
+          'updatedAt': FieldValue.serverTimestamp(),
         });
       }
     }
 
-    // 🔹 Mensaje visual de confirmación
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Pilotos actualizados'),
+      const SnackBar(
+        content: Text('Pilotos actualizados correctamente'),
         backgroundColor: Colors.green,
       ),
     );
@@ -1190,15 +1231,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             const SizedBox(height: 10),
                             TextField(
+                              maxLength: 6,
+                              textCapitalization: TextCapitalization.characters,
                               decoration: InputDecoration(
-                                hintText: "RFID Tag (Opcional)",
+                                hintText: "Últimos 6 dígitos RFID",
+                                counterText: "", // Ocultar contador de caracteres
                                 prefixIcon: Icon(Icons.nfc_outlined,
                                     size: 20, color: primary),
                                 contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 0, vertical: 0),
                               ),
-                              onChanged: (val) =>
-                                  _pilots[index]['rfid'] = val.trim(),
+                              onChanged: (val) {
+                                final upper = val.trim().toUpperCase();
+                                _pilots[index]['rfid'] = upper;
+                              },
                               controller: TextEditingController(
                                   text:
                                       _pilots[index]['rfid']?.toString() ?? ''),
